@@ -1166,6 +1166,24 @@ class Solution:
             % (state["LoopUnroll"]))
       state["Valid"] = False
 
+
+    # Determine if we can load directly-to-LDS.
+    # Transpose requires a trip through registers to perform the transpose so can't use DirectToLdsA
+    # LDS loads always write 4 bytes apart so only 4-byte operations 
+    # TODO - currently only support Single but could be extended to 2 halfs or part of a double
+    state["DirectToLdsA"] = False
+    state["DirectToLdsB"] = False
+    if state["GlobalLoadVectorWidthA"] == 1 \
+            and not state["ProblemType"]["TransposeA"] \
+            and state["ProblemType"]["DataType"].isSingle():
+        state["DirectToLdsA"] = True
+
+    if state["GlobalLoadVectorWidthB"] == 1 \
+            and state["ProblemType"]["TransposeB"] \
+            and state["ProblemType"]["DataType"].isSingle():
+        state["DirectToLdsB"] = True
+
+
     state["AssignedDerivedParameters"] = True
 
   ########################################
