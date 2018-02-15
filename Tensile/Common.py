@@ -133,7 +133,7 @@ validMacroTiles = []
 validISA = [(0,0,0)]
 validISA.extend(globalParameters["SupportedISA"])
 depthUs = range(-16, 0)
-depthUs.extend(range(2,512+1,2))
+depthUs.extend(range(2,512+1,1))
 for i in validMacroTileSides:
   for j in validMacroTileSides:
     validMacroTiles.append([i, j])

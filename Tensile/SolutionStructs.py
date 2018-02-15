@@ -826,6 +826,11 @@ class Solution:
       totalVectorsA = totalElementsA / state["GlobalReadVectorWidth"]
       totalVectorsB = totalElementsB / state["GlobalReadVectorWidth"]
 
+      print "info: NumThreads=", state["NumThreads"]
+      print "info: totalVectorsCoalescedA=", totalVectorsCoalescedA, "totalVectorsA=", totalVectorsA
+      print "info: totalVectorsCoalescedB=", totalVectorsCoalescedB, "totalVectorsB=", totalVectorsB
+
+      state["FinalVectorLoadValidThreadsA"] = -1 # default, all threads valid
       if totalVectorsA < state["NumThreads"]:
         state["PVA"] = state["NumThreads"] / totalVectorsA # partial vector
         if state["NumThreads"] % totalVectorsA != 0:
@@ -844,22 +849,21 @@ class Solution:
                 % (state["NumThreads"], totalVectorsA))
           validDepthU = False
       else:
-        state["PVA"] = 1 # partial vector
+        state["PVA"] = 1 # no partial vector
         if totalVectorsA % state["NumThreads"] != 0:
-          if globalParameters["PrintSolutionRejectionReason"]:
-            print1("totalVectorsA %u %% NumThreads %u != 0" \
-                % (totalVectorsA, state["NumThreads"]))
-          validDepthU = False
-        if state["GlobalReadVectorWidth"] % state["PVA"] != 0:
-          if globalParameters["PrintSolutionRejectionReason"]:
-            print1("GlobalReadVectorWidth %u %% PVA %u != 0" \
-                % (state["GlobalReadVectorWidth"], state["PVA"]))
-          validDepthU = False
+          state["FinalVectorLoadValidThreadsA"] = totalVectorsA % state["NumThreads"]
+
       state["GlobalLoadVectorWidthA"] = state["GlobalReadVectorWidth"] / state["PVA"]
       state["NumLoadsA"] = totalVectorsA * state["PVA"] / state["NumThreads"]
+      if state["FinalVectorLoadValidThreadsA"] != -1:
+          state["NumLoadsA"] += 1
+
+      print "result: GlobalLoadVectorWidthA=", state["GlobalLoadVectorWidthA"], \
+              "NumLoadsA=", state["NumLoadsA"],\
+              "FinalVectorLoadValidThreadsA", state["FinalVectorLoadValidThreadsA"]
 
 
-
+      state["FinalVectorLoadValidThreadsB"] = -1 # default, all threads valid
       if totalVectorsB < state["NumThreads"]:
         state["PVB"] = state["NumThreads"] / totalVectorsB # partial vector
         if state["NumThreads"] % totalVectorsB != 0:
@@ -878,15 +882,27 @@ class Solution:
                 % (state["GlobalReadVectorWidth"], state["PVB"]))
           validDepthU = False
       else:
-        state["PVB"] = 1 # partial vector
-        if totalVectorsB % state["NumThreads"] != 0 \
-            or state["GlobalReadVectorWidth"] % state["PVB"] != 0:
-          if globalParameters["PrintSolutionRejectionReason"]:
-            print1("totalVectorsB %u %% NumThreads %u != 0" \
-                % (totalVectorsB, state["NumThreads"]))
-          validDepthU = False
+        state["PVB"] = 1 # no partial vector
+        if totalVectorsB % state["NumThreads"] != 0: 
+          state["FinalVectorLoadValidThreadsB"] = totalVectorsB % state["NumThreads"]
+
       state["GlobalLoadVectorWidthB"] = state["GlobalReadVectorWidth"] / state["PVB"]
       state["NumLoadsB"] = totalVectorsB * state["PVB"] / state["NumThreads"]
+      if state["FinalVectorLoadValidThreadsB"] != -1:
+          state["NumLoadsB"] += 1
+
+
+      print "result: GlobalLoadVectorWidthB=", state["GlobalLoadVectorWidthB"], \
+              "NumLoadsB=", state["NumLoadsB"],\
+              "FinalVectorLoadValidThreadsB", state["FinalVectorLoadValidThreadsB"]
+
+      if not state["BufferLoad"] and (\
+        state["FinalVectorLoadValidThreadsA"] or \
+        state["FinalVectorLoadValidThreadsB"] ):
+        if globalParameters["PrintSolutionRejectionReason"]:
+          print1("Fractional vector with FinalVectorLoadValidThreads* > 0 requires BufferLoad=True")
+        state["Valid"] = False
+
 
       # f16 can't load shorts from global->lds
       if state["ProblemType"]["DataType"].isHalf() \
@@ -1378,3 +1394,5 @@ class Solution:
       return result
     return not result
 
+
+# TODO - add support for vector-width != 1, if possible.

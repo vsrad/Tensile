@@ -2126,6 +2126,21 @@ class KernelWriterAssembly(KernelWriter):
     self.vgprPool.checkIn(unrollOffsets)
     self.vgprPool.checkIn(tmp)
 
+    if kernel["BufferLoad"]:
+      kStr += inst("v_cmp_lt_u32", "vcc", \
+          vgpr("GlobalReadOffset%s"%tp["tensorChar"]), \
+          vgpr("Serial"), \
+          "tid < valid-tid")
+      kStr += inst("v_cndmask_b32", \
+                   vgpr("GlobalReadOffset%s"%tp["tensorChar"]), \
+                   vgpr("GlobalReadOffset%s+%u"%(tP["tensorChar"], graIdx),1), \
+                   -1,
+                   "vcc",
+                   "Mask load so OOB will return 0")
+      finalVectorValidThreads = kernel["FinalVectorValidThreads%s" % (tP["tensorChar"])]
+      if finalVectorValidThreads != -1:
+        kStr += "// Last offset only valid for first %d threads\n" % finalVectorValidThreads
+
     return kStr
 
   ##############################################################################
