@@ -255,7 +255,7 @@ class KernelWriterAssembly(KernelWriter):
 
     self.AsmBugs = {}
     self.AsmBugs["ExplicitCO"] = True; # New assembler require explicit reference to CO (carry-out)
-    self.AsmBugs["NoDirectToLds"] = False # Older assemblers don't support DirectToLDS syntax
+    self.AsmBugs["NoDirectToLds"] = True # Older assemblers don't support DirectToLDS syntax
 
     # ISA version, such as 803
     self.version = globalParameters["CurrentISA"]
@@ -3020,7 +3020,7 @@ class KernelWriterAssembly(KernelWriter):
                   kStr += tP["globalReadInstruction"].toString( \
                       (vgpr("G2L%s+%u"%(tP["tensorChar"], g2lIdx), loadWidth), \
                       vgpr("GlobalReadOffset%s+%u"%(tP["tensorChar"], graIdx),1), \
-                      sgpr("Srd%s"%(tP["tensorChar"]), 4), 0), \
+                      sgpr("Srd%s"%(tP["tensorChar"]), 4), "", 0), \
                       "G -> Reg %u_%u_%u_%u"%(para, sPara, perp, sPerp ), tP["NonTemporal"] )
               else:
                 kStr += tP["globalReadInstruction"].toString( \
