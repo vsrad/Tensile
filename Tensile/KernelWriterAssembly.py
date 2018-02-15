@@ -406,9 +406,9 @@ class KernelWriterAssembly(KernelWriter):
         "%s, %s" )
 
     buffer_load_dwordx4 = MemoryInstruction("buffer_load_dwordx4", 1, 0, 0, 4, \
-        "%s, %s, %s, 0 offen offset:%s" )
+        "%s, %s, %s, 0 offen %s offset:%s" )
     buffer_load_dwordx2 = MemoryInstruction("buffer_load_dwordx2", 1, 0, 0, 2, \
-        "%s, %s, %s, 0 offen offset:%s" )
+        "%s, %s, %s, 0 offen %s offset:%s" )
     buffer_load_dword = MemoryInstruction("buffer_load_dword", 1, 0, 0, 1, \
         "%s, %s, %s, 0 offen %s offset:%s" )
 
@@ -2125,6 +2125,7 @@ class KernelWriterAssembly(KernelWriter):
     self.vgprPool.checkIn(tileOffsets)
     self.vgprPool.checkIn(unrollOffsets)
     self.vgprPool.checkIn(tmp)
+
     return kStr
 
   ##############################################################################
@@ -3013,15 +3014,19 @@ class KernelWriterAssembly(KernelWriter):
                   kStr += tP["globalReadInstruction"].toString( \
                       (\
                       vgpr("GlobalReadOffset%s+%u"%(tP["tensorChar"], graIdx),1), \
-                      sgpr("Srd%s"%(tP["tensorChar"]), 4), "lds", 0), \
+                      sgpr("Srd%s"%(tP["tensorChar"]), 4), \
+                      "lds", \
+                      0), \
                       "G -> LDS(%s)"%(comment), tP["NonTemporal"], 0, 1 )
 
                 else:
                   kStr += tP["globalReadInstruction"].toString( \
                       (vgpr("G2L%s+%u"%(tP["tensorChar"], g2lIdx), loadWidth), \
                       vgpr("GlobalReadOffset%s+%u"%(tP["tensorChar"], graIdx),1), \
-                      sgpr("Srd%s"%(tP["tensorChar"]), 4), "", 0), \
-                      "G -> Reg %u_%u_%u_%u"%(para, sPara, perp, sPerp ), tP["NonTemporal"] )
+                      sgpr("Srd%s"%(tP["tensorChar"]), 4), \
+                      "", \
+                      0), \
+                      "G -> Reg %u_%u_%u_%u"%(para, sPara, perp, sPerp ))
               else:
                 kStr += tP["globalReadInstruction"].toString( \
                     (vgpr("G2L%s+%u"%(tP["tensorChar"], g2lIdx), loadWidth), \
