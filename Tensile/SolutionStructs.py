@@ -20,6 +20,7 @@
 ################################################################################
 
 
+import sys,traceback
 from Common import globalParameters, defaultProblemType, assignParameterWithDefault, printExit, assignParameterRequired, defaultSolution, validParameters, print1
 from copy import deepcopy
 from math import ceil, log
@@ -156,6 +157,17 @@ class DataType:
     if result is NotImplemented:
       return result
     return not result
+
+########################################
+# Print a reject message :
+def reject(state, *args):
+  if globalParameters["PrintSolutionRejectionReason"]:
+    sys.stdout.write("reject: ")
+    for a in args:
+      print(a)
+    traceback.print_stack(None, 2)
+  if state != None:
+    state["Valid"] = False
 
 
 ################################################################################
@@ -658,22 +670,19 @@ class Solution:
           state["MacroTile1"]/state["MacroTile0"])
       if macroTileShape > state["MacroTileShapeMax"] \
           or macroTileShape < state["MacroTileShapeMin"]:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("rejecting MacroTile Shape %u:%u for Min:Max %u:%u" \
-              % (state["MacroTile0"], state["MacroTile1"], \
-              state["MacroTileShapeMin"], state["MacroTileShapeMax"]))
-        state["Valid"] = False
+        reject(state, "rejecting MacroTile Shape %u:%u for Min:Max %u:%u" \
+            % (state["MacroTile0"], state["MacroTile1"], \
+            state["MacroTileShapeMin"], state["MacroTileShapeMax"]))
 
     if "WorkGroupMappingType" in state:
       if state["WorkGroupMappingType"] == "Z":
         if abs(state["WorkGroupMapping"]) > 2:
-          if globalParameters["PrintSolutionRejectionReason"]:
-            print1("WorkGroupMappingType=Z only supports WorkGroupMapping=1, 2")
-          state["Valid"] = False
+          reject(state, "WorkGroupMappingType=Z only supports WorkGroupMapping=1, 2")
 
 
     # done
     state["AssignedProblemIndependentDerivedParameters"] = True
+
 
 
   ########################################
@@ -714,11 +723,9 @@ class Solution:
     # TT0,1 both must be multiples of VW, b/c of rC, rA, rB
     if state["ThreadTile0"] % state["VectorWidth"] != 0 \
         or state["ThreadTile1"] % state["VectorWidth"] != 0:
-      if globalParameters["PrintSolutionRejectionReason"]:
-        print1("ThreadTile0 %u or ThreadTile1 %u not a multiple of VectorWidth %u" \
-            % (state["ThreadTile0"], state["ThreadTile1"], \
-            state["VectorWidth"]))
-      state["Valid"] = False
+      reject(state, "ThreadTile0 %u or ThreadTile1 %u not a multiple of VectorWidth %u" \
+          % (state["ThreadTile0"], state["ThreadTile1"], \
+          state["VectorWidth"]))
       return
 
 
@@ -730,19 +737,15 @@ class Solution:
     # LocalSplitU too large?
     numElementsPerWorkGroup = state["MacroTile0"]*state["MacroTile1"]
     if numElementsPerWorkGroup < state["NumThreads"]:
-      if globalParameters["PrintSolutionRejectionReason"]:
-        print1("NumElementsPerWorkGroup %u < NumThreads %u; reduce LocalSplitU" \
-            % (numElementsPerWorkGroup, state["NumThreads"]))
-      state["Valid"] = False
+      reject(state, "NumElementsPerWorkGroup %u < NumThreads %u; reduce LocalSplitU" \
+          % (numElementsPerWorkGroup, state["NumThreads"]))
       return
     state["NumElementsPerThread"] = numElementsPerWorkGroup / \
         state["NumThreads"]
     state["GlobalWriteVectorWidth"] = min(state["VectorWidth"], state["NumElementsPerThread"] )
     if state["NumElementsPerThread"] % state["GlobalWriteVectorWidth"] != 0:
-      if globalParameters["PrintSolutionRejectionReason"]:
-        print1("LSU NumElementsPerThread %u not divisible into GWVW %u" \
-            % (state["NumElementsPerThread"], state["GlobalWriteVectorWidth"]))
-      state["Valid"] = False
+      reject(state, "LSU NumElementsPerThread %u not divisible into GWVW %u" \
+          % (state["NumElementsPerThread"], state["GlobalWriteVectorWidth"]))
       return
     state["NumGlobalWriteVectorsPerThread"] = state["NumElementsPerThread"] \
         / state["GlobalWriteVectorWidth"]
@@ -751,30 +754,22 @@ class Solution:
     # LocalSplitU but can't NumThreads%MacroTile doesn't support sideways store
     if state["LocalSplitU"] > 1:
       if state["NumThreads"] % state["MacroTile0"] != 0:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("LocalSplitU but NumThreads=%u not divisible by MT0=%u for sideways store" \
-              % (state["NumThreads"], state["MacroTile0"]))
-        state["Valid"] = False
+        reject(state, "LocalSplitU but NumThreads=%u not divisible by MT0=%u for sideways store" \
+            % (state["NumThreads"], state["MacroTile0"]))
         return
       if state["MacroTile0"]*state["MacroTile1"] % state["NumThreads"] != 0:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("LocalSplitU but MT0*MT1=%u elements doesn't divide into NumThreads=%u" \
-              % (state["MacroTile0"]*state["MacroTile1"], state["NumThreads"]))
-        state["Valid"] = False
+        reject(state, "LocalSplitU but MT0*MT1=%u elements doesn't divide into NumThreads=%u" \
+            % (state["MacroTile0"]*state["MacroTile1"], state["NumThreads"]))
         return
 
     # GlobalSplitU doesn't work with
     if state["GlobalSplitU"] > 1:
       if not state["GlobalSplitUSummationAssignmentRoundRobin"] \
           and state["LoopTail"]:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("GlobalSplitU and LoopTail require SummationAssignmentRoundRobin=True since strongly breaks Tensile kernel architecture")
-        state["Valid"] = False
+        reject(state, "GlobalSplitU and LoopTail require SummationAssignmentRoundRobin=True since strongly breaks Tensile kernel architecture")
         return
       if not state["ProblemType"]["DataType"].isSingle():
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("GlobalSplitU only compatible with single precision")
-        state["Valid"] = False
+        reject(state, "GlobalSplitU only compatible with single precision")
         return
 
     ########################################
@@ -784,9 +779,7 @@ class Solution:
     # DepthU == -1 means glvw=1
     if state["DepthU"] == -1:
       if state["MacroTile0"] != state["MacroTile1"]:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("DepthU=0 requires square MacroTile")
-        state["Valid"] = False
+        reject(state, "DepthU=0 requires square MacroTile")
         return
 
     if userDepthU < 0:
@@ -834,19 +827,16 @@ class Solution:
       if totalVectorsA < state["NumThreads"]:
         state["PVA"] = state["NumThreads"] / totalVectorsA # partial vector
         if state["NumThreads"] % totalVectorsA != 0:
-          if globalParameters["PrintSolutionRejectionReason"]:
-            print1("NumThreads %u %% totalVectorsA %u != 0" \
-                % (state["NumThreads"], totalVectorsA))
+          reject(None, "NumThreads %u %% totalVectorsA %u != 0" \
+              % (state["NumThreads"], totalVectorsA))
           validDepthU = False
         if state["PVA"] * totalVectorsA != state["NumThreads"]:
-          if globalParameters["PrintSolutionRejectionReason"]:
-            print1("PVA %u * totalVectorsA %u != NumThreads %u" \
-                % (state["PVA"], totalVectorsA, state["NumThreads"]))
+          reject(None, "PVA %u * totalVectorsA %u != NumThreads %u" \
+              % (state["PVA"], totalVectorsA, state["NumThreads"]))
           validDepthU = False
         if state["GlobalReadVectorWidth"] % state["PVA"] != 0:
-          if globalParameters["PrintSolutionRejectionReason"]:
-            print1("NumThreads %u %% totalVectorsA %u != 0" \
-                % (state["NumThreads"], totalVectorsA))
+          reject(None, "NumThreads %u %% totalVectorsA %u != 0" \
+              % (state["NumThreads"], totalVectorsA))
           validDepthU = False
       else:
         state["PVA"] = 1 # no partial vector
@@ -867,19 +857,16 @@ class Solution:
       if totalVectorsB < state["NumThreads"]:
         state["PVB"] = state["NumThreads"] / totalVectorsB # partial vector
         if state["NumThreads"] % totalVectorsB != 0:
-          if globalParameters["PrintSolutionRejectionReason"]:
-            print1("NumThreads %u %% totalVectorsB %u != 0" \
+          reject(None, "NumThreads %u %% totalVectorsB %u != 0" \
                 % (state["NumThreads"], totalVectorsB))
           validDepthU = False
         if state["PVB"] * totalVectorsB != state["NumThreads"]:
-          if globalParameters["PrintSolutionRejectionReason"]:
-            print1("PVB %u * totalVectorsB %u != NumThreads %u" \
-                % (state["PVB"], totalVectorsB, state["NumThreads"]))
+          reject(None, "PVB %u * totalVectorsB %u != NumThreads %u" \
+              % (state["PVB"], totalVectorsB, state["NumThreads"]))
           validDepthU = False
         if state["GlobalReadVectorWidth"] % state["PVB"] != 0:
-          if globalParameters["PrintSolutionRejectionReason"]:
-            print1("GlobalReadVectorWidth %u %% PVB %u != 0" \
-                % (state["GlobalReadVectorWidth"], state["PVB"]))
+          reject(None, "GlobalReadVectorWidth %u %% PVB %u != 0" \
+              % (state["GlobalReadVectorWidth"], state["PVB"]))
           validDepthU = False
       else:
         state["PVB"] = 1 # no partial vector
@@ -899,9 +886,7 @@ class Solution:
       if not state["BufferLoad"] and (\
         state["FinalVectorLoadValidThreadsA"] or \
         state["FinalVectorLoadValidThreadsB"] ):
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("Fractional vector with FinalVectorLoadValidThreads* > 0 requires BufferLoad=True")
-        state["Valid"] = False
+        reject(state, "Fractional vector with FinalVectorLoadValidThreads* > 0 requires BufferLoad=True")
 
 
       # f16 can't load shorts from global->lds
@@ -967,9 +952,7 @@ class Solution:
         or state["GlobalLoadVectorWidthB"] == 1):
       if "KernelLanguage" in state:
         if state["KernelLanguage"] == "Assembly":
-          if globalParameters["PrintSolutionRejectionReason"]:
-            print1("f16 kernels can load shorts from global->lds")
-          state["Valid"] = False
+          reject(state, "f16 kernels can load shorts from global->lds")
           return
 
     # nlca = 1
@@ -986,9 +969,7 @@ class Solution:
           foundValid = True
           break
       if not foundValid:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("No NumLoadsCoalescedA=1 found")
-        state["Valid"] = False
+        reject(state, "No NumLoadsCoalescedA=1 found")
         return
 
     # nlca = -1
@@ -1004,38 +985,29 @@ class Solution:
           foundValid = True
           break
       if not foundValid:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("No NumLoadsCoalescedA=-1 found")
-        state["Valid"] = False
+        reject(state, "No NumLoadsCoalescedA=-1 found")
         return
 
     # nlca = other
     else:
       if state["NumLoadsCoalescedA"] > state["NumLoadsA"]:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("NLCA > NLA")
-        state["Valid"] = False
+        reject(state, "NLCA > NLA")
         return
       state["NumLoadsPerpendicularA"] = state["NumLoadsA"] \
           / state["NumLoadsCoalescedA"]
 
       if state["NumLoadsA"] % state["NumLoadsCoalescedA"] != 0:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("numLoadsA %u %% numLoadsParaA %u != 0" \
-              % (state["NumLoadsA"], state["NumLoadsCoalescedA"]))
-        state["Valid"] = False
-      if totalVectorsCoalescedA % state["NumLoadsCoalescedA"] != 0:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("totalVectorsCoalescedA %u %% numLoadsParaA %u != 0" \
+        reject(state, "numLoadsA %u %% numLoadsParaA %u != 0" \
+            % (state["NumLoadsA"], state["NumLoadsCoalescedA"]))
+      if state["FinalVectorLoadValidThreadsA"] == -1:
+        if totalVectorsCoalescedA % state["NumLoadsCoalescedA"] != 0 :
+          reject(state, "totalVectorsCoalescedA %u %% numLoadsParaA %u != 0" \
               % (totalVectorsCoalescedA, state["NumLoadsCoalescedA"]))
-        state["Valid"] = False
-        return
-      if totalElementsPerpA % state["NumLoadsPerpendicularA"] != 0:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("totalElementsPerpA %u %% numLoadsPerpA %u != 0" \
+          return
+        if totalElementsPerpA % state["NumLoadsPerpendicularA"] != 0:
+          reject(state, "totalElementsPerpA %u %% numLoadsPerpA %u != 0" \
               % (totalElementsPerpA, state["NumLoadsPerpendicularA"]))
-        state["Valid"] = False
-        return
+          return
 
     # nlcb = 1
     if state["NumLoadsCoalescedB"] == 1:
@@ -1051,9 +1023,7 @@ class Solution:
           foundValid = True
           break
       if not foundValid:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("No NumLoadsCoalescedB=1 found")
-        state["Valid"] = False
+        reject(state, "No NumLoadsCoalescedB=1 found")
         return
 
     # nlcb = -1
@@ -1069,40 +1039,32 @@ class Solution:
           foundValid = True
           break
       if not foundValid:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("No NumLoadsCoalescedB=-1 found")
-        state["Valid"] = False
+        reject(state, "No NumLoadsCoalescedB=-1 found")
         return
 
     # nlcb = other
     else:
       if state["NumLoadsCoalescedB"] > state["NumLoadsB"]:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("NLCB > NLB")
-        state["Valid"] = False
+        reject(state, "NLCB > NLB")
         return
 
       state["NumLoadsPerpendicularB"] = state["NumLoadsB"] \
           / state["NumLoadsCoalescedB"]
 
       if state["NumLoadsB"] % state["NumLoadsCoalescedB"] != 0:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("numLoadsB %u %% numLoadsParaB %u != 0" \
-            % (state["NumLoadsB"], state["NumLoadsCoalescedB"]))
-        state["Valid"] = False
+        reject(state, "numLoadsB %u %% numLoadsParaB %u != 0" \
+          % (state["NumLoadsB"], state["NumLoadsCoalescedB"]))
         return
-      if totalVectorsCoalescedB % state["NumLoadsCoalescedB"] != 0:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("totalVectorsCoalescedB %u %% numLoadsParaB %u != 0" \
+
+      if state["FinalVectorLoadValidThreadsB"] == -1:
+        if totalVectorsCoalescedB % state["NumLoadsCoalescedB"] != 0:
+          reject(state, "totalVectorsCoalescedB %u %% numLoadsParaB %u != 0" \
             % (totalVectorsCoalescedB, state["NumLoadsCoalescedB"]))
-        state["Valid"] = False
-        return
-      if totalElementsPerpB % state["NumLoadsPerpendicularB"] != 0:
-        if globalParameters["PrintSolutionRejectionReason"]:
-          print1("totalElementsPerpB %u %% numLoadsPerpB %u != 0" \
+          return
+        if totalElementsPerpB % state["NumLoadsPerpendicularB"] != 0:
+          reject(state, "totalElementsPerpB %u %% numLoadsPerpB %u != 0" \
             % (totalElementsPerpB, state["NumLoadsPerpendicularB"]))
-        state["Valid"] = False
-        return
+          return
 
     if state["ProblemType"]["TLUA"]:
       state["LSCA"] = state["MacroTileA"] \
@@ -1164,9 +1126,7 @@ class Solution:
     state["LdsNumElements"] = ldsNumElements
     ldsSize = ldsNumElements * state["ProblemType"]["DataType"].numBytes()
     if ldsSize > globalParameters["MaxLDS"]:
-      if globalParameters["PrintSolutionRejectionReason"]:
-        print1("Kernel Uses %u > %u bytes of LDS" % ( ldsSize, globalParameters["MaxLDS"]))
-      state["Valid"] = False
+      reject(state, "Kernel Uses %u > %u bytes of LDS" % ( ldsSize, globalParameters["MaxLDS"]))
       return
 
     # LoopUnroll  = DepthU / LocalSplitU
@@ -1177,10 +1137,8 @@ class Solution:
 
     # LoopUnroll too small
     if state["LoopUnroll"] < 2:
-      if globalParameters["PrintSolutionRejectionReason"]:
-        print1("LoopUnroll %u is less than 2" \
-            % (state["LoopUnroll"]))
-      state["Valid"] = False
+      reject(state, "LoopUnroll %u is less than 2" \
+          % (state["LoopUnroll"]))
 
 
     # Determine if we can load directly-to-LDS.
