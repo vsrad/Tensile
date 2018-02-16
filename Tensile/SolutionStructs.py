@@ -999,6 +999,7 @@ class Solution:
       if state["NumLoadsA"] % state["NumLoadsCoalescedA"] != 0:
         reject(state, "numLoadsA %u %% numLoadsParaA %u != 0" \
             % (state["NumLoadsA"], state["NumLoadsCoalescedA"]))
+        return
       if state["FinalVectorLoadValidThreadsA"] == -1:
         if totalVectorsCoalescedA % state["NumLoadsCoalescedA"] != 0 :
           reject(state, "totalVectorsCoalescedA %u %% numLoadsParaA %u != 0" \
