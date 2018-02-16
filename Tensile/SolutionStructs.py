@@ -169,6 +169,8 @@ def reject(state, *args):
   if state != None:
     state["Valid"] = False
 
+def Print(state, field):
+  return field + "=" + str(state[field])
 
 ################################################################################
 # ProblemType
@@ -819,7 +821,8 @@ class Solution:
       totalVectorsA = totalElementsA / state["GlobalReadVectorWidth"]
       totalVectorsB = totalElementsB / state["GlobalReadVectorWidth"]
 
-      print "info: NumThreads=", state["NumThreads"]
+      print "info: ", Print(state, "NumThreads"), Print(state, "DepthU"), \
+                      Print(state, "MacroTileA"), Print(state, "MacroTileB")
       print "info: totalVectorsCoalescedA=", totalVectorsCoalescedA, "totalVectorsA=", totalVectorsA
       print "info: totalVectorsCoalescedB=", totalVectorsCoalescedB, "totalVectorsB=", totalVectorsB
 
@@ -1011,7 +1014,8 @@ class Solution:
           return
 
     # nlcb = 1
-    if state["NumLoadsCoalescedB"] == 1:
+    if state["NumLoadsCoalescedB"] == 1 \
+        and state["FinalVectorLoadValidThreadsB"] == -1:
       foundValid = False
       for nlcb in range(1, state["NumLoadsB"]+1):
         nlpb = state["NumLoadsB"] / nlcb
@@ -1135,6 +1139,8 @@ class Solution:
       state["LoopUnroll"] = state["DepthU"] / state["LocalSplitU"]
     if state["LoopUnroll"] * state["LocalSplitU"] != state["DepthU"]:
         state["Valid"] = False
+
+    print("info: Unroll=", state["LoopUnroll"])
 
     # LoopUnroll too small
     if state["LoopUnroll"] < 2:

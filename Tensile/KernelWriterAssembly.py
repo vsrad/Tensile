@@ -2088,11 +2088,13 @@ class KernelWriterAssembly(KernelWriter):
     unrollOffsets = tP["gpr"]["unrollOffsets"]
     tmp = self.vgprPool.checkOut(3)
     graIdx = 0
+    lastValidGraIdx = 0
     for perp in range(0, tP["nrp"]):
       for sPerp in range(0, tP["nrpv"]):
         for para in range(0, tP["nrc"]):
           for sPara in range(0, tP["nrcv"]/tP["nrcvpi"]):
             # vgpr assignments
+            lastValidGraIdx = graIdx
             if tP["tlu"]:
               vgprTile   = tileOffsets   + para*tVW + sPara*tVS
               vgprUnroll = unrollOffsets + perp*uVW + sPerp*uVS
@@ -2127,19 +2129,22 @@ class KernelWriterAssembly(KernelWriter):
     self.vgprPool.checkIn(tmp)
 
     if kernel["BufferLoad"]:
-      kStr += inst("v_cmp_lt_u32", "vcc", \
-          vgpr("GlobalReadOffset%s"%tp["tensorChar"]), \
-          vgpr("Serial"), \
-          "tid < valid-tid")
-      kStr += inst("v_cndmask_b32", \
-                   vgpr("GlobalReadOffset%s"%tp["tensorChar"]), \
-                   vgpr("GlobalReadOffset%s+%u"%(tP["tensorChar"], graIdx),1), \
-                   -1,
-                   "vcc",
-                   "Mask load so OOB will return 0")
-      finalVectorValidThreads = kernel["FinalVectorValidThreads%s" % (tP["tensorChar"])]
-      if finalVectorValidThreads != -1:
-        kStr += "// Last offset only valid for first %d threads\n" % finalVectorValidThreads
+      finalVectorLoadValidThreads = kernel["FinalVectorLoadValidThreads%s" % (tP["tensorChar"])]
+      if finalVectorLoadValidThreads != -1:
+        tmpSgpr = self.getTmpSgpr(1)
+        kStr += "// Last offset only valid for first %d threads\n" % finalVectorLoadValidThreads
+        kStr += inst("s_mov_b32", sgpr(tmpSgpr), finalVectorLoadValidThreads, "" )
+        kStr += inst("v_cmp_lt_u32", \
+            "vcc", \
+            vgpr("Serial"), \
+            sgpr(tmpSgpr), \
+            "tid < valid-tid")
+        kStr += inst("v_cndmask_b32", \
+                     vgpr("GlobalReadOffset%s+%u"%(tP["tensorChar"], lastValidGraIdx)), \
+                     vgpr("GlobalReadOffset%s+%u"%(tP["tensorChar"], lastValidGraIdx)), \
+                     -1,
+                     "vcc",
+                     "Mask load so OOB will return 0")
 
     return kStr
 
@@ -3179,19 +3184,21 @@ class KernelWriterAssembly(KernelWriter):
     #offsetMultiplier = instruction.offsetMultiplier
     g2lIdx = 0
     #kStr += dump(vgpr("LocalWriteAddr%s"%tP["tensorChar"]))
-    #print "\nLocalWrite", tP["tensorChar"]
-    #print "tlu", tP["tlu"]
-    #print "lsc", kernel[tP["lsc"]]
-    #print "lsp", kernel[tP["lsp"]]
-    #print "grcv", tP["grcv"]
-    #print "wtc", tP["wtc"]
-    #print "wuc", tP["wuc"]
-    #print "nrp", tP["nrp"]
-    #print "nrc", tP["nrc"]
-    #print "nwcv", tP["nwcv"]
-    #print "nwpv", tP["nwpv"]
-    #print "nrcvpi", tP["nrcvpi"]
-    #print "nwcvpi", tP["nwcvpi"]
+    if 1:
+      print "\nLocalWrite", tP["tensorChar"]
+      print "tlu", tP["tlu"]
+      print "lsc", kernel[tP["lsc"]]
+      print "lsp", kernel[tP["lsp"]]
+      print "grcv", tP["grcv"]
+      print "wtc", tP["wtc"]
+      print "wuc", tP["wuc"]
+      print "nrp", tP["nrp"]
+      print "nrc", tP["nrc"]
+      print "nwcv", tP["nwcv"]
+      print "nwpv", tP["nwpv"]
+      print "nrcvpi", tP["nrcvpi"]
+      print "nwcvpi", tP["nwcvpi"]
+
     # if transposing, positions of sPerp and sPara are transposed
     for perp in range(0, tP["nrp"]):
       for para in range(0, tP["nrc"]):
@@ -3222,6 +3229,9 @@ class KernelWriterAssembly(KernelWriter):
                   blockWidth))
           for oIdx in range(0, numOffsets):
             paramList.append(offset)
+      
+      
+          print "offset", offset
 
           paramTuple = tuple(paramList)
           #comment = "Reg -> L %u_%u_%u_%u"%(para, sPara, perp, sPerp)
@@ -3283,7 +3293,6 @@ class KernelWriterAssembly(KernelWriter):
           vgpr("LocalReadAddr%s"%tP["tensorChar"]), \
           "reset Red,Blk -> Red")
     return kStr
-
   ##############################################################################
   # Local Read: Increment A/B
   ##############################################################################
@@ -3671,7 +3680,7 @@ class KernelWriterAssembly(KernelWriter):
     self.vgprPool.checkIn(copy)
     self.vgprPool.checkIn(tmpVgpr)
 
-    # dump ds_write addr
+    # dump addr
     #kStr += dump(vgpr(addr))
 
     # do writes
