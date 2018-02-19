@@ -3111,20 +3111,20 @@ class KernelWriterAssembly(KernelWriter):
   ##############################################################################
   def calculateLdsWriteOffset(self, perp, para, sPerp, sPara, kernel, tP):
 
-    #print "  ", "perp", perp, "para", para, "s", s
+    #print "  ", "perp", perp, "para", para
     lscaOffset = para * kernel[tP["lsc"]]
     lspaOffset = perp * kernel[tP["lsp"]]
     if tP["tlu"]:
       if tP["wtc"] == tP["grcv"]:
-        lspaOffset += s
+        lspaOffset += sPerp
       elif tP["wuc"] == tP["grcv"]:
-        lscaOffset += s
+        lscaOffset += sPara
       i = sPara + (tP["nrcv"]/tP["nrcvpi"]) * (para + tP["nrc"] * (sPerp + tP["nrpv"] * perp))
     else:
       if tP["wtc"] == tP["grcv"]:
-        lscaOffset += s
+        lscaOffset += sPara
       elif tP["wuc"] == tP["grcv"]:
-        lspaOffset += s
+        lspaOffset += sPerp
       i = sPara + (tP["nrcv"]/tP["nrcvpi"]) * (para * tP["glvw"] + tP["nrc"] * (sPerp + tP["glvw"] * tP["nrpv"] * perp ))
     #if not tP["tlu"]:
     #  tmp = sPara
@@ -3184,7 +3184,7 @@ class KernelWriterAssembly(KernelWriter):
     #offsetMultiplier = instruction.offsetMultiplier
     g2lIdx = 0
     #kStr += dump(vgpr("LocalWriteAddr%s"%tP["tensorChar"]))
-    if 1:
+    if 0:
       print "\nLocalWrite", tP["tensorChar"]
       print "tlu", tP["tlu"]
       print "lsc", kernel[tP["lsc"]]
@@ -3230,8 +3230,8 @@ class KernelWriterAssembly(KernelWriter):
           for oIdx in range(0, numOffsets):
             paramList.append(offset)
       
-      
-          print "offset", offset
+          if 0: 
+              print "offset", offset
 
           paramTuple = tuple(paramList)
           #comment = "Reg -> L %u_%u_%u_%u"%(para, sPara, perp, sPerp)

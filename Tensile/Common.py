@@ -149,7 +149,7 @@ validParameters = {
     # =False means the L1 cache will do the transposing work and it is quite fast; then data is written coalesced (no bank conflicts) to LDS.
     # =True means the transpose will happen while writing to LDS, this usually has bank conflicts, but it appears the throughput is still fast enough to not slow the VALUs down.
     # it appears that the L1 cache can still achieve quite a bit of performance for GRCG=False, but overall it's usually faster to read coalesced
-    "GlobalReadCoalesceGroupA":   [ False, True ], # True means 
+    "GlobalReadCoalesceGroupA":   [ False, True ], 
     "GlobalReadCoalesceGroupB":   [ False, True ],
 
     # for transposes, this option governs how short-vectors should be read from global and written to lds
@@ -189,7 +189,8 @@ validParameters = {
     "LocalWrite2B":               [ False, True ],
     "LocalRead2A":                [ False, True ],
     "LocalRead2B":                [ False, True ],
-    "BufferLoad":                 [ False, True] ,
+    "BufferLoad":                 [ False, True] ,      # use buffer load inst rather than flat (in assembly only)
+    "FractionalLoad":             [ False, True] ,      # Some work-items in the group may not participate in the final buffer load .Allows more felxibility in choosing DepthU
 
     "WorkGroupMapping":           range(-1024,1024+1),  # change a workgroup's id so that the all the workgroups on the gpu at a time are hitting L2 cache the best
     "WorkGroupMappingType":       ["B", "Z"],           # Blocking, Z-order (not any faster than blocking, especially for the arithmetic it requires)
@@ -286,6 +287,7 @@ defaultBenchmarkCommonParameters = [
     {"LocalRead2A":               [ True ] },
     {"LocalRead2B":               [ True ] },
     {"BufferLoad":                [ True ] },
+    {"FractionalLoad":            [ True ] },
     {"GlobalSplitU":              [ 1 ] },
     {"GlobalSplitUSummationAssignmentRoundRobin": [ True ] },
     {"GlobalSplitUWorkGroupMappingRoundRobin":    [ False ] },
@@ -347,7 +349,8 @@ defaultProblemType = {
 
 
     }
-defaultProblemSizes = [{"Range": [ [2880], 0, 0 ]}]
+#defaultProblemSizes = [{"Range": [ [128], [256], [1], [256] ]}]
+defaultProblemSizes = []
 defaultBenchmarkFinalProblemSizes = [{"Range": [
     [64, 64, 64, 512], 0, 0 ]}]
 

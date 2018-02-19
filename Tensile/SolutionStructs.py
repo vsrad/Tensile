@@ -169,7 +169,8 @@ def reject(state, *args):
   if state != None:
     state["Valid"] = False
 
-def Print(state, field):
+# print a labled variable
+def pvar(state, field):
   return field + "=" + str(state[field])
 
 ################################################################################
@@ -557,6 +558,7 @@ class ProblemSizes:
     self.maxC = 0
     self.maxA = 0
     self.maxB = 0
+    print "SettingC, problems=", self.sizes
     for problemSize in self.sizes:
       sizeC = 1
       sizeA = 1
@@ -570,6 +572,7 @@ class ProblemSizes:
       self.maxC = max(self.maxC, sizeC)
       self.maxA = max(self.maxA, sizeA)
       self.maxB = max(self.maxB, sizeB)
+      print "info: maxC->", self.maxC
 
   def __str__(self):
     s = "ProblemSizes\n"
@@ -821,13 +824,14 @@ class Solution:
       totalVectorsA = totalElementsA / state["GlobalReadVectorWidth"]
       totalVectorsB = totalElementsB / state["GlobalReadVectorWidth"]
 
-      print "info: ", Print(state, "NumThreads"), Print(state, "DepthU"), \
-                      Print(state, "MacroTileA"), Print(state, "MacroTileB")
+      print "info: ", pvar(state, "NumThreads"), pvar(state, "DepthU"), \
+                      pvar(state, "MacroTileA"), pvar(state, "MacroTileB")
       print "info: totalVectorsCoalescedA=", totalVectorsCoalescedA, "totalVectorsA=", totalVectorsA
       print "info: totalVectorsCoalescedB=", totalVectorsCoalescedB, "totalVectorsB=", totalVectorsB
 
       state["FinalVectorLoadValidThreadsA"] = -1 # default, all threads valid
       if totalVectorsA < state["NumThreads"]:
+        # Try to reduce size of vector so every thread has a load to do
         state["PVA"] = state["NumThreads"] / totalVectorsA # partial vector
         if state["NumThreads"] % totalVectorsA != 0:
           reject(None, "NumThreads %u %% totalVectorsA %u != 0" \
@@ -841,9 +845,10 @@ class Solution:
           reject(None, "NumThreads %u %% totalVectorsA %u != 0" \
               % (state["NumThreads"], totalVectorsA))
           validDepthU = False
+          # TODO - could set Fractional here
       else:
         state["PVA"] = 1 # no partial vector
-        if totalVectorsA % state["NumThreads"] != 0:
+        if state["FractionalLoad"] and totalVectorsA % state["NumThreads"] != 0:
           state["FinalVectorLoadValidThreadsA"] = totalVectorsA % state["NumThreads"]
 
       state["GlobalLoadVectorWidthA"] = state["GlobalReadVectorWidth"] / state["PVA"]
@@ -873,7 +878,7 @@ class Solution:
           validDepthU = False
       else:
         state["PVB"] = 1 # no partial vector
-        if totalVectorsB % state["NumThreads"] != 0: 
+        if state["FractionalLoad"] and totalVectorsB % state["NumThreads"] != 0: 
           state["FinalVectorLoadValidThreadsB"] = totalVectorsB % state["NumThreads"]
 
       state["GlobalLoadVectorWidthB"] = state["GlobalReadVectorWidth"] / state["PVB"]
@@ -959,7 +964,8 @@ class Solution:
           return
 
     # nlca = 1
-    if state["NumLoadsCoalescedA"] == 1:
+    if state["NumLoadsCoalescedA"] == 1 \
+        and state["FinalVectorLoadValidThreadsA"] == -1:  # TODO- no scan in this case?
       foundValid = False
       for nlca in range(1, state["NumLoadsA"]+1):
         nlpa = state["NumLoadsA"] / nlca
@@ -1071,21 +1077,28 @@ class Solution:
             % (totalElementsPerpB, state["NumLoadsPerpendicularB"]))
           return
 
+    # PaddedDepthU accounts for any fractional loads.  
+    # We need to reserve LDS space for these, and the LDS indexing needs to account 
+    # for this extra padding in the lsc* and lsp* calcs below
+    state["PaddedDepthU"] = state["NumLoadsA"]*state["NumThreads"] / state["MacroTile0"]
+    assert(state["PaddedDepthU"] == state["NumLoadsB"]*state["NumThreads"] / state["MacroTile1"])
+    print "info: ", pvar(state,"PaddedDepthU")
+
     if state["ProblemType"]["TLUA"]:
       state["LSCA"] = state["MacroTileA"] \
           / state["NumLoadsCoalescedA"]
-      state["LSPA"] = state["DepthU"] / state["NumLoadsPerpendicularA"]
+      state["LSPA"] = state["PaddedDepthU"] / state["NumLoadsPerpendicularA"]
     else:
-      state["LSCA"] = state["DepthU"] / state["NumLoadsCoalescedA"]
+      state["LSCA"] = state["PaddedDepthU"] / state["NumLoadsCoalescedA"]
       state["LSPA"] = state["MacroTileA"] \
           / state["NumLoadsPerpendicularA"]
 
     if state["ProblemType"]["TLUB"]:
       state["LSCB"] = state["MacroTileB"] \
           / state["NumLoadsCoalescedB"]
-      state["LSPB"] = state["DepthU"] / state["NumLoadsPerpendicularB"]
+      state["LSPB"] = state["PaddedDepthU"] / state["NumLoadsPerpendicularB"]
     else:
-      state["LSCB"] = state["DepthU"] / state["NumLoadsCoalescedB"]
+      state["LSCB"] = state["PaddedDepthU"] / state["NumLoadsCoalescedB"]
       state["LSPB"] = state["MacroTileB"] \
           / state["NumLoadsPerpendicularB"]
 
@@ -1096,9 +1109,14 @@ class Solution:
 
     # lds buffer size for A, B
     ldsAlign = int(64 / state["ProblemType"]["DataType"].numRegisters())
-    ldsNumElementsA = state["DepthU"]*(state["MacroTile0"]+state["LdsPad"])
+    # For fractional loads, this will include extra space for the unused loads in the FinalVector
+    #ldsNumElementsA = state["NumLoadsA"]*state["NumThreads"] # TODO - remove me
+    ldsNumElementsA = state["PaddedDepthU"]*(state["MacroTile0"]+state["LdsPad"])
     ldsNumElementsAlignedA = ((ldsNumElementsA+ldsAlign-1)/ldsAlign)*ldsAlign
-    ldsNumElementsB = state["DepthU"]*(state["MacroTile1"]+state["LdsPad"])
+
+    # For fractional loads, this will include extra space for the unused loads in the FinalVector
+    #ldsNumElementsB = state["NumLoadsB"]*state["NumThreads"]
+    ldsNumElementsB = state["PaddedDepthU"]*(state["MacroTile1"]+state["LdsPad"])
     ldsNumElementsAlignedB = ((ldsNumElementsB+ldsAlign-1)/ldsAlign)*ldsAlign
     # todo, can the alignment be a power of 2?
     if state["PrefetchGlobalRead"]:
@@ -1140,13 +1158,24 @@ class Solution:
     if state["LoopUnroll"] * state["LocalSplitU"] != state["DepthU"]:
         state["Valid"] = False
 
-    print("info: Unroll=", state["LoopUnroll"])
+    print "info: ", pvar(state, "LoopUnroll"),  \
+        pvar(state, "NumLoadsCoalescedA"), pvar(state, "NumLoadsPerpendicularA"), \
+        pvar(state, "NumLoadsCoalescedB"), pvar(state, "NumLoadsPerpendicularB")
+    print "info: LDS Stats:", \
+        pvar(state, "LdsNumElementsAlignedA"), pvar(state, "LdsOffsetA"), \
+        pvar(state, "LdsNumElementsAlignedB"), pvar(state, "LdsOffsetB")
 
     # LoopUnroll too small
     if state["LoopUnroll"] < 2:
       reject(state, "LoopUnroll %u is less than 2" \
           % (state["LoopUnroll"]))
 
+    ldsNumElementsAOld = state["DepthU"]*(state["MacroTile0"]+state["LdsPad"])
+    if not state["FractionalLoad"] :
+      assert(ldsNumElementsAOld == ldsNumElementsA)
+    ldsNumElementsBOld = state["DepthU"]*(state["MacroTile1"]+state["LdsPad"])
+    if not state["FractionalLoad"] :
+      assert(ldsNumElementsBOld == ldsNumElementsB)
 
     # Determine if we can load directly-to-LDS.
     # Transpose requires a trip through registers to perform the transpose so can't use DirectToLdsA
