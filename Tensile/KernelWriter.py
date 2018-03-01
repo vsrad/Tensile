@@ -50,6 +50,8 @@ class KernelWriter:
     self.enable["MAC"]            = True
     self.enable["PostLoop"]       = True
 
+    self.generatingTailLoop       = False
+
 
   ##############################################################################
   # Kernel Body
@@ -575,6 +577,7 @@ class KernelWriter:
     # Tail Loop
     ########################################
     if kernel["LoopTail"]:
+      self.generatingTailLoop = True
       kStr += self.comment3("Tail Loop")
 
       if self.enable["GlobalRead"]:

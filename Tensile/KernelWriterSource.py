@@ -41,9 +41,13 @@ class KernelWriterSource(KernelWriter):
       # everything escaped extra b/c string
       self.endLine = "\\n\"\n\""
       self.endLinePP = "\\\\" + self.endLine
+      self.quote = "\\\""
+      self.endLineQuote = "\\\\n\\\""
     else:
       self.endLine = "\n"
       self.endLinePP =  "\\" + self.endLine
+      self.quote = "\""
+      self.endLineQuote = "\\n\""
 
     if self.language == "OCL":
       self.getGroupIdStr = "get_group_id"
@@ -86,6 +90,13 @@ class KernelWriterSource(KernelWriter):
     self.commentSuffix = "*/"
     self.commentHR = "*"*40
     self.indent = "  "
+    self.enablePrintf = False  # for HIP, add the necessary code to enable printf
+    self.verboseCheckValues = 0  # print info useful for debugging the CheckValues feature. 0x1:db, 0x2:show matches
+
+    if globalParameters["DebugCheckValuesA"] or globalParameters["DebugCheckValuesB"]:
+        self.enablePrintf = True  
+    else:
+        self.verboseCheckValues = 0 
 
   ##############################################################################
   #
@@ -131,6 +142,8 @@ class KernelWriterSource(KernelWriter):
         self.vectorComponents = ["p[0]", "p[1]"]
       else:
         self.vectorComponents = ["p[0]", "p[1]"]
+
+    kStr += self.endLine
 
     ####################################
     # kernel preprocessor definitions
@@ -377,6 +390,7 @@ class KernelWriterSource(KernelWriter):
       kStr += "#define s0 x" + self.endLine
       kStr += "#define s1 y" + self.endLine
 
+
     ####################################
     # Atomic Global MAC
     if kernel["GlobalSplitU"] > 1:
@@ -620,6 +634,7 @@ class KernelWriterSource(KernelWriter):
             kStr += "  TYPE_MAC(%s,%s,%s); %s" % (strA, strB, strC, \
                 self.endLinePP)
 
+
       if kernel["UnrollMemFence"]:
         kStr += "  " + self.fenceStr
       kStr += self.endLine
@@ -814,6 +829,9 @@ class KernelWriterSource(KernelWriter):
          "DataType"].zeroString(self.language, 1), \
          self.endLine )
 
+    # TODO - use a different value for OOB data
+    #        Currently use zero since Tensile already has handy functions to create zero in different types
+    kStr += "#define SCALAR_OOB_DATA SCALAR_ZERO%s" % self.endLine
 
     # registers for valuAB
     kStr += "  DATA_TYPE rA[TT%s%s];%s" \
@@ -1103,6 +1121,12 @@ class KernelWriterSource(KernelWriter):
   ##############################################################################
   def graShift(self, kernel, tP):
     kStr = ""
+
+    # Use branch mode to load SCALAR_OOB_DATA for any OOB references:
+    # Call the graBranch routine to save the inBounds marker
+    if globalParameters["DebugCheckValuesA"] or globalParameters["DebugCheckValuesB"]:
+      kStr += self.graBranch(kernel, tP)
+
     for l in range(0, tP["nrt"]):
       for s in range(0, 1 if tP["rc"] else tP["nrtv"]):
         #gro = "globalReadOffset%s%s_%u_%u" \
@@ -1112,6 +1136,7 @@ class KernelWriterSource(KernelWriter):
 
         #kStr += "  %s = (%s > %s) ? %s+%u : %s;%s" \
         #    % (gro, gro, limit, limit, s, gro, self.endLine)
+
 
         kStr += "  globalReadOffset%s%s_%u_%u" \
             % (tP["tensorChar"], tP["tileChar"], l, s )
@@ -1163,6 +1188,7 @@ class KernelWriterSource(KernelWriter):
               if i < len(tP["ia"])-1:
                 kStr += ", "
             kStr += " );%s" % self.endLine
+
     return kStr
 
   ##############################################################################
@@ -1180,6 +1206,7 @@ class KernelWriterSource(KernelWriter):
   ##############################################################################
   def graAddresses(self, kernel, tP):
     kStr = ""
+    tc = tP["tensorChar"]
     for perp in range(0, tP["nrp"]):
       for sPerp in range(0, tP["nrpv"]):
         for para in range(0, tP["nrc"]):
@@ -1194,6 +1221,15 @@ class KernelWriterSource(KernelWriter):
         #    kStr += "  %sVECTOR_TYPE const *globalRead%s_%u_%u = (%sVECTOR_TYPE const *)(%s + globalReadOffset%s_%u_%u);%s" \
         #        % (self.globalPtrStr, tP["tensorChar"], para, perp, self.globalPtrStr, \
         #        tP["tensorChar"], tP["tensorChar"], para, perp, self.endLine)
+
+    tc = tP["tensorChar"]
+    if globalParameters["DebugCheckValues%s"%tc]:
+        # Compute the element offset of first element in the tile
+        # Transpose and Non-Transpose both have same element offset calculation
+        sumIdx = "L" # TODO, not always sizeL
+        kStr += "%s//Compute element offset for first element in the tile:%s" % (self.indent, self.endLine)
+        kStr += "%s%s elementBase%s =  size%s * wg%s * MT%s;%s" % \
+                (self.indent, self.uint64Str, tc, sumIdx, tP["tileChar"], tP["tileChar"], self.endLine)
     return kStr
 
   ##############################################################################
@@ -1328,9 +1364,32 @@ class KernelWriterSource(KernelWriter):
   ##############################################################################
   def lraFinalOffset(self, kernel, tP):
     kStr = ""
+    tc = tP["tensorChar"]
     kStr += "  unsigned int localReadOffset%s = lr%s*VECTOR_WIDTH + sgId*(MT%s+PAD)%s;%s" \
         % ( tP["tensorChar"], tP["tileChar"], tP["tileChar"], \
         " + LDS_OFFSET_B" if tP["isB"] else "", self.endLine)
+
+    tc = tP["tensorChar"]
+    if globalParameters["DebugCheckValues%s"%tc]:
+
+        # TODO - review use of sizeL here, in particular with non batched configs - how to find summation index in general technique?
+        kStr += "%sunsigned int elementOffset%s = sizeL * VECTOR_WIDTH * lr%s;%s"  % (self.indent, tc, tP["tileChar"], self.endLine)
+
+        if self.verboseCheckValues & 1:
+          elementBase = "(unsigned)elementBase%s" % tc
+          elementOffset = "elementOffset%s" % tc
+          lr0i = "lr%s" % (self.tileChar0)
+          lr1j = "lr%s" % (self.tileChar1)
+          kStr += "%sprintf(%scheckValues_db: group=%%d.%%d.%%d wgI=%%u wgJ=%%u wgK=%%u gid=%%u.%%u.%%u, serial=%%u %s=%%u %s=%%u %s=%%u %s=%%u%s, \
+                   %s(2), %s(1), %s(0), wg0I, wg1J, wgK, %s(2), %s(1), %s(0), serial, %s, %s, %s, %s);%s" \
+                   % (self.indent, self.quote, \
+                      elementBase, elementOffset, lr0i, lr1j, \
+                      self.endLineQuote,\
+                      self.getGroupIdStr, self.getGroupIdStr, self.getGroupIdStr,\
+                      self.getGlobalIdStr, self.getGlobalIdStr, self.getGlobalIdStr, \
+                      elementBase, elementOffset, lr0i, lr1j, \
+                      self.endLine)
+
     return kStr
 
   ##############################################################################
@@ -1340,6 +1399,8 @@ class KernelWriterSource(KernelWriter):
     kStr = ""
     kStr += "  %sDATA_TYPE *localRead%s;%s" % (self.sharedPtrStr, \
         tP["tensorChar"], self.endLine)
+
+
     return kStr
 
   ##############################################################################
@@ -1523,6 +1584,7 @@ class KernelWriterSource(KernelWriter):
   ##############################################################################
   def globalReadDo(self, kernel, guardK, tP):
     kStr = ""
+    tc = tP["tensorChar"]
 
     #for perp in range(0, tP["nrp"]):
     #  for para in range(0, tP["nrc"]):
@@ -1544,13 +1606,13 @@ class KernelWriterSource(KernelWriter):
                   else ""), (" || !numIter%s"%self.unrollChar) \
                   if kernel["GlobalSplitU"] > 1 else "")
             # guard around edge
-            if kernel["EdgeType"] == "Branch":
+            if kernel["EdgeType"] == "Branch" or globalParameters["DebugCheckValues%s"%tc]:
               if guardK:
                 kStr += " || "
               kStr += "( !inBounds%s_%u )" % ( \
                   (tP["tensorChar"], para if tP["tlu"] else perp) )
-            if kernel["EdgeType"] == "Branch" or guardK:
-              kStr += " ? SCALAR_ZERO : "
+            if kernel["EdgeType"] == "Branch" or guardK or globalParameters["DebugCheckValues%s"%tc]:
+              kStr += " ? SCALAR_OOB_DATA : "
             kStr += "*(globalRead%s_%u_%u_%u_%u + %u);%s" \
                 % (tP["tensorChar"], para, 0 if tP["rc"] else sPara, perp, sPerp, sPara if tP["rc"] else 0, \
                 self.endLine)
@@ -1673,12 +1735,53 @@ class KernelWriterSource(KernelWriter):
   ##############################################################################
   def localReadDo(self, kernel, black, tP):
     kStr = ""
-    for r in range(0, kernel[tP["tt"]]/kernel["VectorWidth"]):
+    tc = tP["tensorChar"]
+    for r in range(0, kernel[tP["tt"]]/kernel["VectorWidth"]):  # number of loads in the tile
       for s in range(0, kernel["VectorWidth"]):
+        # each iteration in this inner loop loads one element of the vector into a GPR
         kStr += "%sr%s[%u*VECTOR_WIDTH+%u%s] = localRead%s[%u*SG%s*VECTOR_WIDTH + %u]; %s" \
             % (self.indent, tP["tensorChar"], r, s, \
             (("+TT%s"%tP["tileChar"]) if black else ""), \
             tP["tensorChar"], r, tP["tileChar"], s, self.endLine)
+
+        if globalParameters["DebugCheckValues%s"%tc]:
+            # iterations in (s) load 1-4 elements that are are consecutive in u-space
+            # iterations in (r) load elements separated a bit in u-space, see scaling below
+            indent2 = self.indent + "  "
+            sumIdx = "L" # TODO - this is size of the summation dimension, not always sizeL
+            dataCast = "(float)" if kernel["ProblemType"]["DataType"].isHalf() else ""
+            kStr += "%s{%s" % (self.indent, self.endLine)
+            kStr += "%sDATA_TYPE actualReg = r%s[%u*VECTOR_WIDTH+%u%s];%s" \
+                    % (indent2, tP["tensorChar"], r, s, \
+                      (("+TT%s"%tP["tileChar"]) if black else ""), \
+                      self.endLine)
+            kStr += "%sunsigned int ttOffset = %u*SG%s*VECTOR_WIDTH*size%s + %u;%s" % (indent2, r, tP["tileChar"], sumIdx, s, self.endLine)
+            kStr += "%sDATA_TYPE expected = (DATA_TYPE) (elementBase%s + elementOffset%s + ttOffset);%s" % (indent2, tc, tc, self.endLine)
+            kStr += "%sif (actualReg != SCALAR_OOB_DATA) {%s" % (indent2, self.endLine)
+            kStr += "%s  if (actualReg != expected)%s" % (indent2, self.endLine)
+            kStr += "%s    printf(%s**checkValues: MISMATCH %s gid=%%d.%%d.%%d wgI=%%d wgJ=%%d wgK=%%d tailLoop=%d elementBase=%%u r=%s s=%s line=%%u ttOffset=%%u Actual:%%4.0f != Expected:%%4.0f%s, " \
+                                "%s(2), %s(1), %s(0), wg0I, wg1J, wgK, (unsigned)elementBase%s, __LINE__, ttOffset, %s actualReg, %s expected);%s"\
+                        % (indent2, self.quote, \
+                           tc, self.generatingTailLoop, r, s, 
+                           self.endLineQuote,\
+                           self.getGlobalIdStr, self.getGlobalIdStr, self.getGlobalIdStr, tc, \
+                           dataCast, dataCast, self.endLine, \
+                           )
+            if self.verboseCheckValues & 2:
+                kStr += "%s  else%s" % (indent2, self.endLine)
+                kStr += "%s    printf(%s  checkValues: MATCH %s gid=%%d.%%d.%%d wgI=%%d wgJ=%%d wgK=%%d elementBase=%%u r=%s s=%s ttOffset=%%u Actual:%%4.0f == Expected:%%4.0f%s, " \
+                                    "%s(2), %s(1), %s(0), wg0I, wg1J, wgK, (unsigned)elementBase%s, ttOffset, actualReg, expected);%s"\
+                            % (indent2, self.quote, \
+                               tc, r, s, 
+                               self.endLineQuote,\
+                               self.getGlobalIdStr, self.getGlobalIdStr, self.getGlobalIdStr, tc, self.endLine, \
+                               )
+            kStr += "%s}%s" % (indent2, self.endLine)
+            kStr += "%s}%s" % (self.indent, self.endLine)
+
+    if globalParameters["DebugCheckValues%s"%tc]:
+        kStr += "%selementBase%s += 1; // Move to next line%s" % (self.indent, tc, self.endLine)
+
     return kStr
 
   ##############################################################################
