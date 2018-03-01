@@ -228,7 +228,11 @@ validParameters = {
     "WorkGroupMappingType":       ["B", "Z"],           # Blocking, Z-order (not any faster than blocking, especially for the arithmetic it requires)
     "MaxOccupancy":               range(1, 40+1),       # wg / CU; if cache thrashing is hurting performance, this allocates extra lds to artificially limit occupancy
     "WorkGroup":                  validWorkGroups,      # ( wg0 x wg1 x LocalSplitU ) dimensions of the workgroup which will operate on a tile and share lds
-    "ThreadTile":                 validThreadTiles,     # ( tt0 x tt1 ) dimensions of the C tile that each thread works on, TT=4 and VW=4 means a thread will work on a tight 4x4 tile of C, where VW=1 means the tile will work on 16 spread out values
+
+    #ThreadTile: ( tt0 x tt1 ) dimensions of the C tile that each thread works on, 
+    # TT=4 and VW=4 means a thread will work on a tight 4x4 tile of C, where VW=1 means the tile will work on 16 spread out values
+    # Generally, the VW determines the consecutive a WI will work on, then it will skip ahead SG0*VW elements to get to the next row of VGPR inputs
+    "ThreadTile":                 validThreadTiles,     
     "MacroTile":                  validMacroTiles,      # MT0 = wg0*tt0, MT1 = wg1*tt1
 
 
@@ -260,7 +264,8 @@ validParameters = {
     # LoopUnroll=4 means there are 4 subiterations within the loop, 4 actual iterations written in the code.
     # LocalSplit=2 means the workgroup is split up into 2 subgroups, and each subgroup is doing different parts of the summation.
     # subgroup0 does k=0-3, 8-11... and subgroup1 does k=4-7, 12-15...
-    # So, each iteration through the summation loop, which has 4 actual subiterations, does 8 summation iterations, because each subgroup did 4; and when data is read from global memory the threads read 8 elements along the summation dimension.
+    # So, each iteration through the summation loop, which has 4 actual subiterations, does 8 summation iterations, because each subgroup did 4; 
+    # and when data is read from global memory the threads read 8 elements along the summation dimension.
     # DepthU = LoopUnroll * LocalSplitU = 4*2 in this case
     # it made more sense for the user to directly control LocalSplitU and DepthU, then derrive afterwards LoopUnroll=DepthU/LocalSplitU
     "DepthU":                     depthUs,
@@ -286,7 +291,7 @@ validParameters = {
     # ShiftPtr: shift read pointers to be in bounds, then unshift registers (source & assembly), allows smallest supported problem size to be M or N >= global load vector width, i.e. 1
     # ShiftTile: todo. this is MIOpenGemm's strategy, probably eliminates unshift however smallest supported problem size would be tile size
     # BoundaryLoad: todo. use isa to set buffer/image load boundaries and out of bounds data automatically comes in as zero
-    "EdgeType":                   [ "Branch", "ShiftPtr", "None" ], # None=don't guard against ou
+    "EdgeType":                   [ "Branch", "ShiftPtr", "None" ], # None=don't guard against oob accesses, just useful for performance testing
 
     # Kernels should be written in assembly or source
     # if assembly, ISA will determine architecture
