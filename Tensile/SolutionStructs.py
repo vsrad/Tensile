@@ -24,6 +24,9 @@ from Common import globalParameters, defaultProblemType, assignParameterWithDefa
 from copy import deepcopy
 from math import ceil, log
 
+def parg(state,arg):
+  return "%s=%s" % (arg, state[arg])
+
 ################################################################################
 # Data Type
 ################################################################################
@@ -51,6 +54,8 @@ class DataType:
       [ "Z", 4,   "double2", "double2", "TensileComplexDouble",  "tensileDataTypeComplexDouble" ],
       [ "H", 0.5, "ERROR",   "half",    "TensileHalf",           "tensileDataTypeHalf"          ]
   ]
+
+
 
   ########################################
   def __init__( self, value ):
@@ -1131,6 +1136,12 @@ class Solution:
     state["LVPA"] = state["LSPA"] / state["GlobalLoadVectorWidthA"]
     state["LVPB"] = state["LSPB"] / state["GlobalLoadVectorWidthB"]
 
+    print "A: LSCA=", state["LSCA"], "LSPA=", state["LSPA"]
+    print "B: LSCB=", state["LSCB"], "LSPB=", state["LSPB"]
+    print "WG=", state["WorkGroup"][0], "x", state["WorkGroup"][1], "NumThreads=", state["NumThreads"], "MT=", state["MacroTile0"], "x", state["MacroTile1"]
+    #print "A: LVCA=", state["LVCA"], "LVPA=", state["LVPA"]
+    #print "B: LVCB=", state["LVCB"], "LVPB=", state["LVPB"]
+
     # lds buffer size for A, B
     if state["KernelLanguage"] == "Source" and \
        state["LdsPadA"] != state["LdsPadB"]:
@@ -1194,6 +1205,12 @@ class Solution:
       state["Valid"] = False
 
     state["AssignedDerivedParameters"] = True
+
+    # Verify that the asseembly algorithm for swapping LDS offsets will work:
+    assert(state["LdsOffsetA"]^state["LdsOffsetA_Blk"] == state["LdsOffsetA_Blk"])
+    assert(state["LdsOffsetB"]^state["LdsOffsetA_Blk"] == state["LdsOffsetB_Blk"])
+
+    print "LDS Stats", parg(state, "LdsOffsetA"),  parg(state, "LdsOffsetA_Blk"), parg(state, "LdsOffsetB"), parg(state, "LdsOffsetB_Blk")
 
   ########################################
   # create a dictionary with booleans on whether to include parameter in name
