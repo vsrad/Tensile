@@ -2330,7 +2330,7 @@ class KernelWriterAssembly(KernelWriter):
         "vcc", \
         vgpr(tP["gpr"]["lwoT"]), \
         vgpr("LocalWriteAddr%s"%tP["tensorChar"]), \
-        "lwFO%s = lw%s%s + lw%s%s*MT%s" \
+        "lwFO%s = lw%s%s + lw%s%s*(MT%s+PAD)" \
         % (tP["tensorChar"], tP["tensorChar"], tP["tileChar"], \
         tP["tensorChar"], self.unrollChar, tP["tileChar"]) )
     kStr += inst("v_lshlrev_b32", \
@@ -2472,7 +2472,7 @@ class KernelWriterAssembly(KernelWriter):
         vgpr(sgid), \
         sgpr(tmpSgpr), \
         vgpr(sgid), \
-        "sgid=sgid*MT%u"%tP["tensorIdx"] )
+        "sgid=sgid*(MT%u+PAD)"%tP["tensorIdx"] )
     if kernel["VectorWidth"] > 1:
       kStr += staticMultiply(vgpr(tP["gpr"]["lro"]), vgpr(tP["gpr"]["lro"]), \
           kernel["VectorWidth"], sgpr(tmpSgpr))
@@ -3155,9 +3155,9 @@ class KernelWriterAssembly(KernelWriter):
           #print "0lscaOffset", lscaOffset
 
           if tP["tlu"]:
-            lspaOffset *= kernel[tP["mt"]]
+            lspaOffset *= (kernel[tP["mt"]] + kernel["LdsPad"])
           else:
-            lscaOffset *= kernel[tP["mt"]]
+            lscaOffset *= (kernel[tP["mt"]] + kernel["LdsPad"])
           #print "1lspaOffset", lspaOffset
           #print "1lscaOffset", lscaOffset
           #if tP["tlu"] == tP["grcv"]:
@@ -3180,12 +3180,12 @@ class KernelWriterAssembly(KernelWriter):
               (("%u + "%sPara) if tP["wtc"] else ""), \
               para, tP["lsc"] )
           if not tP["tlu"]:
-            comment += "*MT%s" % (tP["tileChar"])
+            comment += "*(MT%s+PAD)" % (tP["tileChar"])
           comment += " + (%s%d*%s)" % (
               (("%u + "%sPerp) if tP["wuc"] else ""), perp, \
               tP["lsp"])
           if tP["tlu"]:
-            comment += "*MT%s" % (tP["tileChar"])
+            comment += "(*MT%s+PAD)" % (tP["tileChar"])
           comment += " = %u" % (offset)
 
           paramList = []
