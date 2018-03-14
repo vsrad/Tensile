@@ -94,6 +94,17 @@ def main( config ):
     functionNames.append("tensile_%s" % (problemType))
   globalParameters["EnableHalf"] = enableHalf
 
+
+  if globalParameters["DebugCheckValuesA"] or globalParameters["DebugCheckValuesB"] :
+    assert(globalParameters["DataInitTypeAB"] == 5) # TODO - set automatically, before used?
+    globalParameters["DataInitTypeAB"] = 5
+    # TODO - to support other types:
+    # - review the vector math logic - this may work.
+    # - the conversion always converts ElementIndex to a float; this might have to change.
+    assert(["ProblemType"]["DataType"].isSingle())
+    print "db: DebugCheckValuesA enabled, forcing DataInitTypeAB to serial-in-u"
+
+
   ##############################################################################
   # Write Generated Header
   ##############################################################################

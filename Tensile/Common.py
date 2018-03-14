@@ -79,6 +79,17 @@ globalParameters["DataInitTypeBeta"] = 2          # 0=0, 1=1, 2=2, 3=rand, 4=NaN
 globalParameters["CMakeCXXFlags"] = ""            # pass flags to cmake
 globalParameters["CMakeCFlags"] = ""              # pass flags to cmake
 globalParameters["DebugKernel"] = False           # assembly only, kernel gets buffer for debug "printing"; kernel writes data to memory, gets coppied to host and printed
+
+# Check values as they are read into registers against an expected serial-in-u,
+# and assert if mismatch detected.
+# Setting either of these flags forces the DataInitTypeAB to be 5 (serial-in-u)
+# so the kernel can easily compute the expected value.
+# Separate controls are available to check A and B:
+# Only supported in Assembly mode and only for single-precision values
+# This is a debug mode and will generate additional checking code inside the kernel.
+globalParameters["DebugCheckValuesA"] = False  
+globalParameters["DebugCheckValuesB"] = False 
+
 globalParameters["LibraryPrintDebug"] = False     # solutions will print enqueue info when enqueueing a kernel
 
 # Tensor printing controls:
@@ -487,6 +498,7 @@ def assignGlobalParameters( config ):
     if not versionIsCompatible(config["MinimumRequiredVersion"]):
       printExit("Benchmark.yaml file requires version=%s is not compatible with current Tensile version=%s" \
           % (config["MinimumRequiredVersion"], __version__) )
+
 
   # User-specified global parameters
   print2("GlobalParameters:")
