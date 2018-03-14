@@ -289,6 +289,10 @@ class KernelWriterAssembly(KernelWriter):
       self.labels[name] = len(self.labels)
     return self.labels[name]
 
+  def getUniqLabel(self):
+    name = "uniq_label_" + str(len(self.labels))
+    return self.getLabel(name)
+
   ##############################################################################
   # Find Memory Instruction For Width and Stride
   ##############################################################################
@@ -824,12 +828,49 @@ class KernelWriterAssembly(KernelWriter):
 
     # DebugCheckValuesA uses these GPRs:
     #   - sgprElementBaseA  (64b) : Tracks the element at the base of the current tile.  
-    #                               Init to 0 and increment by 1 when we move to new unroll iteration
+    #                               Init to 0 and increment by 1 (or VW?) when we move to new unroll iteration
     #                               (each unroll iteration performs one MAC for a K element)
     #   - sgprElementIncA   (32b) : Running element increment.  TODO - maybe can remove?
     #   - vgprElementIndexA (64b) : Element index, when added to ElementBase + the ElementInc this gives the element offset.  
-    #                               This never changes during the loop.  The offsets must account for the full stride
-    #                               in physical memory
+    #                               This never changes during the loop.  The offsets must account for the full stride.
+    #                               If VW=1, adjacent work-items in A will have ElementIndex separated by stride0I.
+    #                               If VW=4, adjacent work-items in A will have ElementIndex separated by ?
+
+
+    # Most of the complex code is in the vgprElementIndex[AB] calculation.  Strategy is:
+    #  - For this feature, we are interested in computing element offset not the physical memory offsets.
+    #    Therefore the code uses size* fields rather than the memory strides.
+    #  
+    #  1. Converting element coordinate to element value:
+    #    With serial-in-u initialization, element are initialized with a serial sequence that 
+    #    increments in the K dimension first.  
+    #    Therefore, the value of an element at position i,j in a 2D matrix:
+    #
+    #    if tlu: 
+    #      elementValue = i*sizeSum + j
+    #    else : // transpose case:
+    #      elementValue = j*sizeSum + i
+    #
+    #    Tensors with higher dimensions can be similarly converted with more indices and sizes
+    #
+    #  2. After tile assignment, WG0 and WG1 specify the tile coordinate in C.
+    #      - Scale these by tile size (MT0 or MT1) to determine coordinates of first element in the tile.
+    #      - Use formula #1 to convert to expected element value
+    #
+    #  3. lrOi and lr1j are the coordinates used to read from LDS.
+    #      - lr0i = serial/SG0, lr1j = (serial/SG0I) % SG1J  (SG=subgroup, == MT if LocalSplitU=1)
+    #      - tlu=1 matrices transpose their values before writing to LDS.  Therefore, tlu=0 and tlu=1 always
+    #        have the same values in LDS, and if DataInitMode is sequential-in-u these will be a
+    #        tile with sequentially increasing elements in each row of LDS.  
+    #      - A slice of the tile has dimensions 1xMT wide and contains the K data values for a single loop iteration.
+    #        The slice height is 1 and therefore the data in the slice all have same K index, with values spread across the free dim
+    #          (assuming localSplitU=false, if localSplitU=true then this changes
+    #      - so add this to compute the expected value each element:
+    #        elementValue += lr1j * sizeK
+    #      
+    #  4. Values are checked when they are loaded from LDS into the VGPRS just before feeding the macs.  
+    #     The value check expands the VW if needed and checks all values.
+
     if globalParameters["DebugCheckValuesA"]:
       vgprIdx = ((vgprIdx+1) / 2) * 2  # Align 
       self.startVgprElementIndexA = vgprIdx
@@ -874,6 +915,11 @@ class KernelWriterAssembly(KernelWriter):
     ####################################
     # num sgprs: initial kernel state
     numSgprKernArgAddress = self.rpga
+
+    # WorkGroup* specify which tile in the C matrix this wg will operate on. Each
+    # WG has a unique tile coordinate (WG0,WG1,...).  
+    # Each dimension in the tensor will utilize another WG variable
+    # WorkGroups will be re-mapped from the hw-assigned wg-ids if WorkGroupMapping !=0
     numSgprWorkGroup0 = 1
     numSgprWorkGroup1 = 1
     numSgprWorkGroup2 = 1
@@ -1272,6 +1318,16 @@ class KernelWriterAssembly(KernelWriter):
         idxChars.append(self.indexChars[i])
 
       # macro declaration
+      # GLOBAL_OFFSET_[AB]:
+      # Computes the memory offset (from the baseA) that should be read by this work-item
+      # Inputs are the indices for the matrix: 
+      #  For a batched GEMM matrixA this will be M-index("i"), L-index (batch), and K-index.
+      #  For a batched GEMM matrixB this will be N-index("j"), L-index (batch), and K-index.
+      #  Higher-order tensors will have additional inputs and thus additional stride multiplies
+      #
+      # Multiplies each input by the appropriate stride to compute the element offset
+      # Finally multiplies by the size of each element to return a memory offset
+      # In Buffer mode, these offsets remain constant during the execution of the algoritm
       kStr += ".macro GLOBAL_OFFSET_%s vgprAddr"%tensorChar
       for i in range(0, numDim):
         # tile index or unroll vgpr
@@ -2247,6 +2303,9 @@ class KernelWriterAssembly(KernelWriter):
             #kStr += dump(vgpr("GlobalReadAddr%s+%u+0"%(tP["tensorChar"], graIdx)))
             #kStr += dump(vgpr("GlobalReadAddr%s+%u+1"%(tP["tensorChar"], graIdx)))
             graIdx += self.rpgo if kernel["BufferLoad"] else self.rpga
+
+    kStr += self.bombIfWg (0,-1,-1,33) # bozo
+
     self.vgprPool.checkIn(tileOffsets)
     self.vgprPool.checkIn(unrollOffsets)
     self.vgprPool.checkIn(tmp)
@@ -4883,25 +4942,64 @@ class KernelWriterAssembly(KernelWriter):
   # vgprAddr controls which vgpr to overwrite with the null pointer address
   ##############################################################################
   def bomb(self,cookie=None,scratchVgpr=-1):
-      kStr =""
-      if scratchVgpr==-1:
-        vgprAddr = self.vgprPool.checkOut(2)
-      else:
-        vgprAddr = scratchVgpr
-      kStr += inst("v_mov_b32", vgpr(vgprAddr+0), 0, "")
-      kStr += inst("v_mov_b32", vgpr(vgprAddr+1), 0, "")
-      #kStr += inst("s_trap",1,  "")
-      kStr += inst("flat_load_dword", vgpr(vgprAddr), vgpr(vgprAddr,2), "bomb - force fault" )
+    kStr =""
+    if scratchVgpr==-1:
+      vgprAddr = self.vgprPool.checkOut(2)
+    else:
+      vgprAddr = scratchVgpr
+    kStr += inst("v_mov_b32", vgpr(vgprAddr+0), 0, "")
+    kStr += inst("v_mov_b32", vgpr(vgprAddr+1), 0, "")
+    #kStr += inst("s_trap",1,  "")
+    kStr += inst("flat_load_dword", vgpr(vgprAddr), vgpr(vgprAddr,2), "bomb - force fault" )
 
-      # This move does not execute but appears in the instruction stream immediately following
-      # the faulting load:
-      if cookie != None:
-        kStr += inst("s_mov_b32", sgpr(0), cookie, "bomb cookie= "+str(cookie))
-     
-      if scratchVgpr == -1:
-        self.vgprPool.checkIn(vgprAddr)
-      return kStr
+    # This move does not execute but appears in the instruction stream immediately following
+    # the faulting load:
+    if cookie != None:
+      kStr += inst("s_mov_b32", sgpr(0), cookie, "bomb cookie= "+str(cookie))
+   
+    if scratchVgpr == -1:
+      self.vgprPool.checkIn(vgprAddr)
+    return kStr
 
+
+  # -1 target means to ignore the index
+  # only 3 dimensions are supported:
+  def bombIfWg(self, targetWg0, targetWg1=-1, targetWg2=-1, cookie=None, scratchVgpr=-1):
+    kStr = ""
+    tmpSgpr = self.getTmpSgpr(1)
+    started = 0
+    numCompares = (targetWg0 != -1) + (targetWg1 != -1) + (targetWg2 != -1)
+    if targetWg1 != -1:
+      kStr += inst("s_cmp_eq_u32", sgpr("WorkGroup0"), targetWg0, "bombIfWg0")
+      if numCompares > 1:
+        kStr += inst("s_mov_b32", sgpr(tmpSgpr), "scc", "Save first compare")
+      started = 1
+
+    if targetWg1 != -1:
+      kStr += inst("s_cmp_eq_u32", sgpr("WorkGroup1"), targetWg1, "bombIfWg1")
+      if numCompares > 1:
+        if started:
+          kStr += inst("s_and_b32",  sgpr(tmpSgpr), "scc", "all wg match?")
+        else:
+          kStr += inst("s_mov_b32", sgpr(tmpSgpr), "scc", "Save first compare")
+      started = 1
+
+    if targetWg2 != -1:
+      kStr += inst("s_cmp_eq_u32", sgpr("WorkGroup2"), targetWg2, "bombIfWg2")
+      if numCompares > 1:
+        if started:
+          kStr += inst("s_and_b32",  sgpr(tmpSgpr), "scc", "all wg match?")
+        else:
+          kStr += inst("s_mov_b32", sgpr(tmpSgpr), "scc", "Save first compare")
+      started = 1
+
+    afterBomb = self.getUniqLabel()
+    if numCompares > 1:
+      kStr += inst("s_cmp_ne_u32", sgpr(tmp), 0,  "")
+    kStr += inst("s_cbranch_scc1", "label_%04u"%afterBomb, "skip" )
+    kStr += self.bomb(cookie,scratchVgpr)
+    kStr += "label_%04u:%s  %s" % (afterBomb, self.endLine, "// bombIfWg skip - bomb is not this wg")
+    return kStr
 
   ##############################################################################
   # assertCommon : Common routine for all assert functions. 
