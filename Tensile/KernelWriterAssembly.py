@@ -1232,7 +1232,6 @@ class KernelWriterAssembly(KernelWriter):
     if globalParameters["DebugKernel"]:
       kStr += self.macroRegister("vgprAddressDbg", \
           self.startVgprAddressDbg)
-          self.startVgprAddressD)
 
     # These track the expected element index (index into A or B) as elemens
     # are loaded from LDS into registers.  If data is initialized with
