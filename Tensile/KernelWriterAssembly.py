@@ -258,7 +258,8 @@ class KernelWriterAssembly(KernelWriter):
     # Check A and B values loaded from memory to ensure they match expected
     # sequential pattern.  Requires DataInitTypeAB=2.  
     # Mismatches will assert (generate GPUVM fault)
-    self.db["InitLds"]     = False  # Initialize LDS at start of kernel
+    self.db["CheckValues"] = False  
+    self.db["InitLds"]     = True  # Initialize LDS at start of kernel
     self.printedAssertCnt  = 0
     self.initLdsValue     = 0xFFFFFFFF  # Value to use for LDS Init, if enabled
 
@@ -367,6 +368,13 @@ class KernelWriterAssembly(KernelWriter):
 
     # True=slightly fewer [v_mov] instructions but extra registers
     self.globalReadIncsUseVgpr = False if kernel["BufferLoad"] else True
+
+
+    if self.db["CheckValues"]:
+      # TODO - to support other types:
+      # - review the vector math logic - this may work.
+      # - the conversion always converts ElementIndex to a float; this might have to change.
+      assert(kernel["ProblemType"]["DataType"].isSingle())
 
     #######################################L
     # Available Memory Instructions
@@ -822,6 +830,11 @@ class KernelWriterAssembly(KernelWriter):
     vgprIdx += numVgprGlobalReadIncsB
     self.startVgprAddressDbg = vgprIdx
     vgprIdx += numVgprAddressDbg
+    if self.db["CheckValues"]:
+      self.startVgprElementIndexA = vgprIdx
+      vgprIdx += 1
+      self.startVgprElementIndexB = vgprIdx
+      vgprIdx += 1
     self.startVgprSerial = vgprIdx
     vgprIdx += numVgprSerial
 
@@ -882,6 +895,12 @@ class KernelWriterAssembly(KernelWriter):
       self.numSgprStridesA -= 1
       self.numSgprStridesB -= 1
     self.numSgprSizesSum = kernel["ProblemType"]["NumIndicesSummation"]
+
+    if self.db["CheckValues"]:
+      # code that computes stride assumes only one common dimension,
+      # not sure how to do this for additional summation dims so 
+      # check for it here
+      assert (self.numSgprSizesSum == 1)
 
     self.numSgprSizesFree = kernel["ProblemType"]["NumIndicesC"]
     self.numSgprAddressDbg = self.rpga if globalParameters["DebugKernel"] else 0
@@ -1163,6 +1182,15 @@ class KernelWriterAssembly(KernelWriter):
     if globalParameters["DebugKernel"]:
       kStr += self.macroRegister("vgprAddressDbg", \
           self.startVgprAddressDbg)
+          self.startVgprAddressD)
+    if self.db["CheckValues"]:
+      # These track the expected element index (index into A or B) as elemens
+      # are loaded from LDS into registers.  If data is initialized with
+      # sequential initialization then the elementIndex (converted to float)
+      # should match the value that is loaded.
+      kStr += self.macroRegister("vgprElementIndexA", self.startVgprElementIndexA)
+      kStr += self.macroRegister("vgprElementIndexB", self.startVgprElementIndexB)
+
     kStr += self.macroRegister("vgprSerial", \
         self.startVgprSerial)
     #kStr += self.comment1("Occu: %u waves/simd" % self.numWavesPerSimd )
@@ -1201,6 +1229,11 @@ class KernelWriterAssembly(KernelWriter):
     kStr += self.macroRegister("sgprOffsetC", self.startSgprOffsetC)
     kStr += self.macroRegister("sgprOffsetA", self.startSgprOffsetA)
     kStr += self.macroRegister("sgprOffsetB", self.startSgprOffsetB)
+    if self.db["CheckValues"]:
+      kStr += self.macroRegister("sgprBaseElementIndexA", self.startSgprBaseElementIndexA)
+      kStr += self.macroRegister("sgprBaseElementIndexB", self.startSgprBaseElementIndexB)
+      kStr += self.macroRegister("sgprElementIndexIncA", self.startSgprElementIndexIncA)
+      kStr += self.macroRegister("sgprElementIndexIncB", self.startSgprElementIndexIncB)
     if globalParameters["DebugKernel"]:
       kStr += self.macroRegister("sgprAddressDbg", self.startSgprAddressDbg)
 
@@ -2153,6 +2186,7 @@ class KernelWriterAssembly(KernelWriter):
   ##############################################################################
   def graFinalOffsets(self, kernel, tP):
     kStr = ""
+    tc = tP["tensorChar"]
     tVW = 1
     tVS = 0
     uVW = 1
@@ -2264,6 +2298,9 @@ class KernelWriterAssembly(KernelWriter):
       #kStr += "s_endpgm\n"
       self.vgprPool.checkIn(tmp)
 
+    if self.db["CheckValues"]:
+      kStr += inst("s_mov_b32", sgpr("BaseElementIndex%s"%tP["tensorChar"]), 0, "Track element at base of tile")
+
     return kStr
 
   ##############################################################################
@@ -2336,6 +2373,12 @@ class KernelWriterAssembly(KernelWriter):
               "incr = %u*bytes"%depthU )
           kStr += inst("s_mov_b32", sgpr("GlobalReadIncs%s+1"%tP["tensorChar"]), \
               hex(0), "incr = %u*bytes (upper)"%depthU )
+
+      if self.db["CheckValues"]:
+        kStr += inst("s_mul_i32", \
+            sgpr("ElementIndexInc%s"%tP["tensorChar"]), \
+            hex(depthU), sgpr("SizesSum+0"), \
+            "incr = SizesSum*DepthU(%u)"%depthU )
 
     else:
       printExit("NumIndicesSummation=%u not yet supported in assembly" \
@@ -2517,6 +2560,24 @@ class KernelWriterAssembly(KernelWriter):
     kStr += vectorStaticDivideAndRemainder(qReg, rReg, dividendReg, divisor, \
         tmpVgpr, tmpSgpr)
     sgid = qReg
+
+    if self.db["CheckValues"]:
+      # assume BufferLoad=True
+      tc = tP["tensorChar"]
+
+      tmpSgpr = self.getTmpSgpr(1)
+
+      kStr += inst("v_mul_lo_u32", \
+          vgpr("ElementIndex%s"%tc), \
+          sgpr("SizesSum"), \
+          vgpr(sgid), \
+          "ElementIndex%s=sgid*SizesSum0"%(tc) )
+      kStr += inst("_v_add_co_u32", \
+          vgpr("ElementIndex%s"%tP["tensorChar"]), \
+          "vcc", \
+          vgpr("ElementIndex%s"%tP["tensorChar"]), \
+          vgpr(tP["gpr"]["lro"]), \
+          "")   # BOZO - check lro
 
     kStr += inst("s_mov_b32", \
         sgpr(tmpSgpr), \
@@ -2898,6 +2959,14 @@ class KernelWriterAssembly(KernelWriter):
       #kStr += dump(vgpr("GlobalReadAddrA+0"))
       #kStr += dump(vgpr("GlobalReadAddrA+1"))
       #kStr += "s_endpgm\n"
+
+    if self.db["CheckValues"]:
+      kStr += inst("s_add_u32 ", \
+           sgpr("BaseElementIndex%s+0"%(tP["tensorChar"])), \
+           sgpr("BaseElementIndex%s+0"%(tP["tensorChar"])), \
+           sgpr("ElementIndexInc%s+0"%(tP["tensorChar"])), \
+          "ElementIndex  += inc" )
+      # TODO - should not be a carry-out here, need to check statically
 
     return kStr
 
@@ -3353,6 +3422,7 @@ class KernelWriterAssembly(KernelWriter):
       if tP["localReadInstruction"].numOffsets == 1:
         tP["localReadOffset"] += kernel["LocalSplitU"]*(kernel["MacroTile%u"%tP["tensorIdx"]] + kernel["LdsPad%s"%tc])
         kStr += self.comment1("N/A, lro->%d"%tP["localReadOffset"])
+        kStr += self.comment1("N/A, lreo->%d"%tP["localReadElementOffset"])
       else:
         inc = kernel["LocalSplitU"]*(kernel["MacroTile%u"%tP["tensorIdx"]]+kernel["LdsPad%s"%tc])
         kStr += inst("_v_add_co_u32", \
@@ -3361,6 +3431,14 @@ class KernelWriterAssembly(KernelWriter):
             hex(inc), \
             vgpr("LocalReadAddr%s"%tP["tensorChar"]), \
             "lr%s += %u (LSU+(MT+Pad)*bpe"%(tP["tensorChar"], inc) )
+
+    if self.db["CheckValues"]:
+      kStr += inst("s_add_u32", \
+          sgpr("BaseElementIndex%s+0"%(tP["tensorChar"])), \
+          sgpr("BaseElementIndex%s+0"%(tP["tensorChar"])), \
+          sgpr("SizesFree+0"),
+          "Move to next summation line")
+
     return kStr
 
   ##############################################################################
@@ -3408,6 +3486,25 @@ class KernelWriterAssembly(KernelWriter):
         if self.db["CheckValue1%s"%tc]:
             kStr += "s_waitcnt lgkmcnt(0) // CheckValue1 wait for LDS read\n"
             kStr += self.assert_eq(destVgpr, 1.0)
+
+    # TODO -review and combine with CheckValue1
+    if self.db["CheckValues"]:
+      tmpVgpr = self.vgprPool.checkOut(1)
+      kStr += "s_waitcnt lgkmcnt(0) // CheckValue wait for LDS read\n"
+      kStr += inst("_v_add_co_u32", \
+                   vgpr(tmpVgpr),\
+                   "vcc",
+                   vgpr("ElementIndex%s"%tc), \
+                   sgpr("BaseElementIndex%s"%tc), \
+                   "Compute true elementIndex")
+      kStr += inst("v_cvt_f32_u32", vgpr(tmpVgpr), vgpr("ElementIndex%s"%tc), "checkvalues")
+      # iterate and check each vector component (vc) - TODO - enable this, currently just checking first element 
+      #for vc in range(0, kernel["ThreadTile%u"%tP["tensorIdx"]]):  
+      #  if vc != 0:
+      #    v_add_f32 vgpr(tmpVgpr), vgpr("tmpVgpr"), 1
+      kStr += self.assert_eq(vgpr(tmpVgpr), destVgpr)
+
+      self.vgprPool.checkIn(tmpVgpr)
 
     #if tP["isB"]:
     #  kStr += self.dumpLds(kernel, 0, 16)
