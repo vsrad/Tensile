@@ -821,12 +821,24 @@ class KernelWriterAssembly(KernelWriter):
     vgprIdx += numVgprGlobalReadIncsB
     self.startVgprAddressDbg = vgprIdx
     vgprIdx += numVgprAddressDbg
+
+    # DebugCheckValuesA uses these GPRs:
+    #   - sgprElementBaseA  (64b) : Tracks the element at the base of the current tile.  
+    #                               Init to 0 and increment by 1 when we move to new unroll iteration
+    #                               (each unroll iteration performs one MAC for a K element)
+    #   - sgprElementIncA   (32b) : Running element increment.  TODO - maybe can remove?
+    #   - vgprElementIndexA (64b) : Element index, when added to ElementBase + the ElementInc this gives the element offset.  
+    #                               This never changes during the loop.  The offsets must account for the full stride
+    #                               in physical memory
     if globalParameters["DebugCheckValuesA"]:
+      vgprIdx = ((vgprIdx+1) / 2) * 2  # Align 
       self.startVgprElementIndexA = vgprIdx
-      vgprIdx += 1
+      vgprIdx += 2
     if globalParameters["DebugCheckValuesB"]:
+      vgprIdx = ((vgprIdx+1) / 2) * 2  # Align 
       self.startVgprElementIndexB = vgprIdx
-      vgprIdx += 1
+      vgprIdx += 2
+
     self.startVgprSerial = vgprIdx
     vgprIdx += numVgprSerial
 
@@ -1290,8 +1302,8 @@ class KernelWriterAssembly(KernelWriter):
         # Flat addressing modes expect the GLOBAL_OFFSET to initialize a full 64-bit address
         if not justOffset32:
           kStr += inst("v_mov_b32", "v[\\vgprAddr+1]", hex(0), "d0 upper")
-      # other c index sgpr
-      elif indices[0] < kernel["ProblemType"]["NumIndicesC"]:
+      # other c index sgpr (free index?)
+      elif indices[0] < kernel["ProblemType"]["NumIndicesC"]: 
         kStr += inst("v_mov_b32", "v[\\vgprAddr+0]", "s[\\sgprOffset%s]" \
             % idxChars[0], "d0 lower")
         if not justOffset32:
@@ -3428,12 +3440,12 @@ class KernelWriterAssembly(KernelWriter):
             vgpr("LocalReadAddr%s"%tP["tensorChar"]), \
             "lr%s += %u (LSU+(MT+Pad)*bpe"%(tP["tensorChar"], inc) )
 
-    if globalParameters["DebugCheckValues%s"%tP["tensorChar"]]:
-      kStr += inst("s_add_u32", \
-          sgpr("BaseElementIndex%s+0"%(tP["tensorChar"])), \
-          sgpr("BaseElementIndex%s+0"%(tP["tensorChar"])), \
-          sgpr("SizesFree+0"),
-          "Move to next summation line")
+    #if globalParameters["DebugCheckValues%s"%tP["tensorChar"]]:
+    #  kStr += inst("s_add_u32", \
+    #      sgpr("BaseElementIndex%s+0"%(tP["tensorChar"])), \
+    #      sgpr("BaseElementIndex%s+0"%(tP["tensorChar"])), \
+    #      sgpr("SizesFree+0"),
+    #      "Move to next summation line")
 
     return kStr
 
