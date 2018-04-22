@@ -560,20 +560,24 @@ class KernelWriterAssembly(KernelWriter):
     # gfx900
     ########################################
     if (kernel["BufferLoad"]):
-      chosen_load_dwordx4 = buffer_load_dwordx4;
-      chosen_load_dwordx2 = buffer_load_dwordx2;
-      chosen_load_dword   = buffer_load_dword;
+      chosen_load_dwordx4 = buffer_load_dwordx4
+      chosen_load_dwordx2 = buffer_load_dwordx2
+      chosen_load_dword   = buffer_load_dword
     else:
-      chosen_load_dwordx4 = flat_load_dwordx4;
-      chosen_load_dwordx2 = flat_load_dwordx2;
-      chosen_load_dword   = flat_load_dword;
+      chosen_load_dwordx4 = flat_load_dwordx4
+      chosen_load_dwordx2 = flat_load_dwordx2
+      chosen_load_dword   = flat_load_dword
+
+    chosen_store_dwordx4 = flat_store_dwordx4
+    chosen_store_dwordx2 = flat_store_dwordx2
+    chosen_store_dword   = flat_store_dword
 
     self.memoryInstructions = {
         (8,0,3): {
           "GlobalRead": [ chosen_load_dwordx4, chosen_load_dwordx2,
             chosen_load_dword ],
-          "GlobalWrite": [ flat_store_dwordx4, flat_store_dwordx2,
-            flat_store_dword ],
+          "GlobalWrite": [ chosen_store_dwordx4, chosen_store_dwordx2,
+            chosen_store_dword ],
           "LocalRead": [ ds_read_b128, ds_read2_b64,
             ds_read_b64, ds_read2_b32, ds_read_b32 ],
           "LocalWrite": [ ds_write_b128, ds_write2_b64,
@@ -582,8 +586,8 @@ class KernelWriterAssembly(KernelWriter):
         (9,0,0): {
           "GlobalRead": [ chosen_load_dwordx4, chosen_load_dwordx2,
             chosen_load_dword ],
-          "GlobalWrite": [ flat_store_dwordx4, flat_store_dwordx2,
-            flat_store_dword ],
+          "GlobalWrite": [ chosen_store_dwordx4, chosen_store_dwordx2,
+            chosen_store_dword ],
           "LocalRead": [ ds_read_b128, ds_read2_b64,
             ds_read_b64, ds_read2_b32, ds_read_b32 ],
           "LocalWrite": [ ds_write_b128, ds_write2_b64,
@@ -4408,13 +4412,15 @@ class KernelWriterAssembly(KernelWriter):
   def notLocalSplitUGlobalWrite(self, kernel):
     if not self.do["PostLoop"]: return ""
     lsu = False
-    elements = []
+    elements = [[] for y in range(2)] # 2D array for Edge,NoEdge
     for tt1 in range(0, kernel["ThreadTile1"]/kernel["VectorWidth"]):
       for tt0 in range(0, kernel["ThreadTile0"]/kernel["VectorWidth"]):
         for vc1 in range(0, kernel["VectorWidth"]):
+          element = (tt1, tt0, vc1, 0, kernel["VectorWidth"])
+          elements[False].append(element) # No Edge Elements
           for vc0 in range(0, kernel["VectorWidth"]):
-              element = (tt1, tt0, vc1, vc0)
-              elements.append(element)
+              element = (tt1, tt0, vc1, vc0, 1)
+              elements[True].append(element) # No Edge Elements
 
     kStr =  self.globalWriteElements(kernel, lsu, elements)
     self.cleanupGlobalWrite(kernel)
@@ -4426,13 +4432,15 @@ class KernelWriterAssembly(KernelWriter):
   def localSplitUGlobalWrite(self, kernel):
     if not self.do["PostLoop"]: return ""
     lsu = True
-    elements = []
+    elements = [[] for y in range(2)] # 2D array for Edge,NoEdge
     for tt1 in range(0, kernel["NumGlobalWriteVectorsPerThread"]):
       for tt0 in range(0, 1):
         for vc1 in range(0, 1):
+          element = (tt1, tt0, vc1, 0, kernel["GlobalWriteVectorWidth"])
+          elements[False].append(element) # No Edge Elements
           for vc0 in range(0, kernel["GlobalWriteVectorWidth"]):
-            element = (tt1, tt0, vc1, vc0)
-            elements.append(element)
+            element = (tt1, tt0, vc1, vc0, 1)
+            elements[False].append(element)  #  Edge Elements
     kStr =  self.globalWriteElements(kernel, lsu, elements)
     self.cleanupGlobalWrite(kernel)
     return kStr
@@ -4440,7 +4448,7 @@ class KernelWriterAssembly(KernelWriter):
   ##############################################################################
   # Global Write Elements
   ##############################################################################
-  def globalWriteElements(self, kernel, lsu, elements ):
+  def globalWriteElements(self, kernel, lsu, elements):
     if not self.do["PostLoop"]: return ""
     kStr = ""
     atomic = kernel["GlobalSplitU"] > 1
@@ -4649,22 +4657,25 @@ class KernelWriterAssembly(KernelWriter):
           # only do an even number of halves
           numElementsPerBatch = int((numElementsPerBatch+1)/2)*2
 
+
+        edgeI = True # bozo, change to edge
+
         # if no atomics and no edge, then write whole vectors
         #if not atomic and not edge:
         #  numVectorsPerBatch = numElementsPerBatch / kernel["GlobalWriteVectorWidth"]
         #  #print "  NumVectorsPerBatch", numVectorsPerBatch
         #  numElementsPerBatch = numVectorsPerBatch * kernel["GlobalWriteVectorWidth"]
-        numBatches = max(1, (len(elements)+numElementsPerBatch-1) / numElementsPerBatch)
+        numBatches = max(1, (len(elements[edgeI])+numElementsPerBatch-1) / numElementsPerBatch)
         #print "NumBatches", numBatches, "NumElementsPerBatch", numElementsPerBatch, "numVgprsPerElement", numVgprsPerElement
         self.lastCoordOffset1 = -1
         self.coordVgpr1 = -1
         for batchIdx in range(0, numBatches):
           elementStartIdx = batchIdx * numElementsPerBatch
-          elementStopIdx = min( elementStartIdx + numElementsPerBatch, len(elements) )
-          elementsThisBatch = elements[elementStartIdx:elementStopIdx]
+          elementStopIdx = min( elementStartIdx + numElementsPerBatch, len(elements[edgeI]) )
+          elementsThisBatch = elements[edgeI][elementStartIdx:elementStopIdx]
           numElementsThisBatch = len(elementsThisBatch)
           numElementVgprs = int(numElementsThisBatch * ceil(numVgprsPerElement))
-          #print "BATCH[%u/%u]: elements[%u:%u] VGPRs=%u" % (batchIdx, numBatches, elementStartIdx, elementStopIdx, numElementVgprs)
+          #print "BATCH[%u/%u]: elements[edgeI][%u:%u] VGPRs=%u" % (batchIdx, numBatches, elementStartIdx, elementStopIdx, numElementVgprs)
           elementVgprs = self.vgprPool.checkOut(numElementVgprs, "elementVgprs")
           kStr += self.globalWriteBatch(kernel, beta, edge, lsu, atomic, \
               elementsThisBatch, self.coord0, self.coord1, self.addrC, \
@@ -4681,6 +4692,29 @@ class KernelWriterAssembly(KernelWriter):
     self.vgprPool.checkIn(tmpVgpr)
     return kStr
 
+
+  def chooseGlobalStore(self, kernel, bps, destVgpr, addr0, addr1, offset, extraFields, hi16=0):
+    kStr = ""
+
+    if kernel["BufferStore"]:
+      if bps==2 and hi16:
+        kStr += "buffer_store_short_d16_hi %s, %s, %s%s 0 offen offset:%u// store C\n" % \
+                 (destVgpr, addr0, addr1, extraFields, offset)
+      elif bps==2 and not hi16:
+        kStr += "buffer_store_short %s, %s, %s%s 0 offen offset:%u// store C\n" % \
+                 (destVgpr, addr0, addr1, extraFields, offset)
+      elif bps==4:
+        kStr += "buffer_store_dword %s, %s, %s%s 0 offen offset:%u// store C\n" % \
+                 (destVgpr, addr0, addr1, extraFields, offset)
+      elif bps==8:
+        kStr += "buffer_store_dwordx2 %s, %s, %s%s 0 offen offset:%u// store C\n" % \
+                 (destVgpr, addr0, addr1, extraFields, offset)
+      elif bps==16:
+        kStr += "buffer_store_dwordx4 %s, %s, %s%s 0 offen offset:%u// store C\n" % \
+                 (destVgpr, addr0, addr1, extraFields, offset)
+
+    return kStr
+
   ##############################################################################
   # Global Write Batch
   ##############################################################################
@@ -4695,7 +4729,7 @@ class KernelWriterAssembly(KernelWriter):
         % (" Beta" if beta else "", " Edge" if edge else "")
     for elementIdx in range(0, len(batchElements)):
       element = batchElements[elementIdx]
-      commentStr += "(%u,%u,%u,%u)" % element
+      commentStr += "(%u,%u,%u,%u:vw%u)" % element
       if elementIdx < len(batchElements)-1:
         commentStr += "; "
     kStr += self.comment3(commentStr)
@@ -4723,6 +4757,8 @@ class KernelWriterAssembly(KernelWriter):
       d0 = element[1]
       vc1 = element[2]
       vc0 = element[3]
+      gwvw = element[4]
+      print "Edge=", edge, element
       if lsu:
         sumIdx = self.startVgprValuC + vc0 + d1*kernel["VectorWidth"]
       else:
@@ -4933,7 +4969,7 @@ class KernelWriterAssembly(KernelWriter):
 
     ########################################
     # rC *= alpha
-    kStr += self.comment("rC *= alpha")
+    kStr += self.comment("rC *= alpha batchEements=%s"%batchElements)
     for elementIdx in range(0, len(batchElements)):
       sumIdx = elementSumIdx[elementIdx]
       if kernel["ProblemType"]["DataType"].isHalf():
@@ -4942,6 +4978,7 @@ class KernelWriterAssembly(KernelWriter):
             kStr += inst("v_pk_mul_f16", vgpr(sumIdx/2), vgpr(self.alphaVgpr), vgpr(sumIdx/2), "*= alpha")
         else:
           kStr += inst("v_mul_f32", vgpr(sumIdx), vgpr(self.alphaVgpr), vgpr(sumIdx), "*= alpha")
+          kStr += inst("v_cvt_f16_f32", vgpr(sumIdx), vgpr(sumIdx), "convert C to fp16" )
       elif kernel["ProblemType"]["DataType"].isSingle():
         kStr += inst("v_mul_f32", vgpr(sumIdx), sgpr("Alpha"), vgpr(sumIdx), "*= alpha" )
       elif kernel["ProblemType"]["DataType"].isDouble():
@@ -5194,26 +5231,30 @@ class KernelWriterAssembly(KernelWriter):
             nonTemporalStr += " glc"
           if kernel["NonTemporalC"]/2==1:
             nonTemporalStr += " slc"
+
+          bps = kernel["ProblemType"]["DataType"].numBytes() * gwvw
+          if kernel["BufferStore"]:
+            addr0 = vgpr(addr)
+            addr1 = sgpr("SrdC", 4)
+          else:
+            addr0 = vgpr(addr,2)
+            addr1 = ""
+
           if kernel["BufferStore"]:
             if kernel["ProblemType"]["DataType"].isHalf():
               if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
-                if sumIdx%2:
-                  kStr += "buffer_store_short_d16_hi %s, %s, %s%s 0 offen offset:0// store C\n" % \
-                           ( vgpr(sumIdx/2), vgpr(addr), sgpr("SrdC", 4), nonTemporalStr )
-                else:
-                  kStr += "buffer_store_short %s, %s, %s%s 0 offen offset:0// store C\n" % \
-                           ( vgpr(sumIdx/2), vgpr(addr), sgpr("SrdC", 4), nonTemporalStr )
+                kStr += self.chooseGlobalStore(kernel, bps, \
+                            vgpr(sumIdx/2), addr0, addr1, 0, nonTemporalStr, \
+                            hi16=sumIdx%2)
               else:
-                # convert C to fp16 before output
-                kStr += inst("v_cvt_f16_f32", vgpr(sumIdx), vgpr(sumIdx), "convert C to fp16" )
-                kStr += "buffer_store_short %s, %s, %s%s 0 offen offset:0// store C\n" % \
-                         ( vgpr(sumIdx), vgpr(addr), sgpr("SrdC", 4), nonTemporalStr )
+                kStr += self.chooseGlobalStore(kernel, bps,\
+                            vgpr(sumIdx), addr0, addr1, 0, nonTemporalStr)
             elif kernel["ProblemType"]["DataType"].isSingle():
-              kStr += "buffer_store_dword %s, %s, %s%s 0 offen offset:0// store C\n" % \
-                       ( vgpr(sumIdx), vgpr(addr), sgpr("SrdC", 4), nonTemporalStr )
+              kStr += self.chooseGlobalStore(kernel, bps,\
+                            vgpr(sumIdx), addr0, addr1, 0, nonTemporalStr)
             elif kernel["ProblemType"]["DataType"].isDouble():
-              kStr += "buffer_store_dwordx2 %s, %s, %s%s 0 offen offset:0// store C\n" % \
-                       ( vgpr(sumIdx*2,2), vgpr(addr), sgpr("SrdC", 4), nonTemporalStr )
+              kStr += self.chooseGlobalStore(kernel, bps,\
+                            vgpr(sumIdx*2,2), addr0, addr1, 0, nonTemporalStr)
           else:
             if kernel["ProblemType"]["DataType"].isHalf():
               if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
