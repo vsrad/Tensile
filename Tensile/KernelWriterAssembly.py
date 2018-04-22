@@ -4440,7 +4440,7 @@ class KernelWriterAssembly(KernelWriter):
           elements[False].append(element) # No Edge Elements
           for vc0 in range(0, kernel["GlobalWriteVectorWidth"]):
             element = (tt1, tt0, vc1, vc0, 1)
-            elements[False].append(element)  #  Edge Elements
+            elements[True].append(element)  #  Edge Elements
     kStr =  self.globalWriteElements(kernel, lsu, elements)
     self.cleanupGlobalWrite(kernel)
     return kStr
@@ -4657,7 +4657,6 @@ class KernelWriterAssembly(KernelWriter):
           # only do an even number of halves
           numElementsPerBatch = int((numElementsPerBatch+1)/2)*2
 
-
         edgeI = True # bozo, change to edge
 
         # if no atomics and no edge, then write whole vectors
@@ -4698,20 +4697,35 @@ class KernelWriterAssembly(KernelWriter):
 
     if kernel["BufferStore"]:
       if bps==2 and hi16:
-        kStr += "buffer_store_short_d16_hi %s, %s, %s%s 0 offen offset:%u// store C\n" % \
-                 (destVgpr, addr0, addr1, extraFields, offset)
+        kStr += "buffer_store_short_d16_hi %s, %s, %s 0 offen offset:%u %s// store C\n" % \
+                 (destVgpr, addr0, addr1, offset, extraFields)
       elif bps==2 and not hi16:
-        kStr += "buffer_store_short %s, %s, %s%s 0 offen offset:%u// store C\n" % \
-                 (destVgpr, addr0, addr1, extraFields, offset)
+        kStr += "buffer_store_short %s, %s, %s 0 offen offset:%u %s// store C\n" % \
+                 (destVgpr, addr0, addr1, offset, extraFields)
       elif bps==4:
-        kStr += "buffer_store_dword %s, %s, %s%s 0 offen offset:%u// store C\n" % \
-                 (destVgpr, addr0, addr1, extraFields, offset)
+        kStr += "buffer_store_dword %s, %s, %s 0 offen offset:%u %s// store C\n" % \
+                 (destVgpr, addr0, addr1, offset, extraFields)
       elif bps==8:
-        kStr += "buffer_store_dwordx2 %s, %s, %s%s 0 offen offset:%u// store C\n" % \
-                 (destVgpr, addr0, addr1, extraFields, offset)
+        kStr += "buffer_store_dwordx2 %s, %s, %s 0 offen offset:%u %s// store C\n" % \
+                 (destVgpr, addr0, addr1, offset, extraFields)
       elif bps==16:
-        kStr += "buffer_store_dwordx4 %s, %s, %s%s 0 offen offset:%u// store C\n" % \
-                 (destVgpr, addr0, addr1, extraFields, offset)
+        kStr += "buffer_store_dwordx4 %s, %s, %s 0 offen offset:%u %s// store C\n" % \
+                 (destVgpr, addr0, addr1, offset, extraFields)
+      else:
+        assert ("bad bps")
+    else:
+      if bps==2 and hi16:
+        kStr += inst("flat_store_short_d16_hi", addr0, destVgpr, extraFields, "store C" )
+      elif bps==2 and not hi16:
+        kStr += inst("flat_store_short", addr0, destVgpr, extraFields, "store C" )
+      elif bps==4:
+        kStr += inst("flat_store_dword", addr0, destVgpr, extraFields, "store C" )
+      elif bps==8:
+        kStr += inst("flat_store_dwordx2", addr0, destVgpr, extraFields, "store C" )
+      elif bps==16:
+        kStr += inst("flat_store_dwordx4", addr0, destVgpr, extraFields, "store C" )
+      else:
+         assert ("bad bps")
 
     return kStr
 
@@ -5240,36 +5254,20 @@ class KernelWriterAssembly(KernelWriter):
             addr0 = vgpr(addr,2)
             addr1 = ""
 
-          if kernel["BufferStore"]:
-            if kernel["ProblemType"]["DataType"].isHalf():
-              if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
-                kStr += self.chooseGlobalStore(kernel, bps, \
-                            vgpr(sumIdx/2), addr0, addr1, 0, nonTemporalStr, \
-                            hi16=sumIdx%2)
-              else:
-                kStr += self.chooseGlobalStore(kernel, bps,\
-                            vgpr(sumIdx), addr0, addr1, 0, nonTemporalStr)
-            elif kernel["ProblemType"]["DataType"].isSingle():
+          if kernel["ProblemType"]["DataType"].isHalf():
+            if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
+              kStr += self.chooseGlobalStore(kernel, bps, \
+                          vgpr(sumIdx/2), addr0, addr1, 0, nonTemporalStr, \
+                          hi16=sumIdx%2)
+            else:
               kStr += self.chooseGlobalStore(kernel, bps,\
-                            vgpr(sumIdx), addr0, addr1, 0, nonTemporalStr)
-            elif kernel["ProblemType"]["DataType"].isDouble():
-              kStr += self.chooseGlobalStore(kernel, bps,\
-                            vgpr(sumIdx*2,2), addr0, addr1, 0, nonTemporalStr)
-          else:
-            if kernel["ProblemType"]["DataType"].isHalf():
-              if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
-                if sumIdx%2:
-                  kStr += inst("flat_store_short_d16_hi", vgpr(addr,2), vgpr(sumIdx/2), "store C" )
-                else:
-                  kStr += inst("flat_store_short", vgpr(addr,2), vgpr(sumIdx/2), "store C" )
-              else:
-                # convert C to fp16 before output
-                kStr += inst("v_cvt_f16_f32", vgpr(sumIdx), vgpr(sumIdx), "convert C to fp16" )
-                kStr += inst("flat_store_short", vgpr(addr,2), vgpr(sumIdx), "store C" )
-            elif kernel["ProblemType"]["DataType"].isSingle():
-              kStr += "flat_store_dword %s, %s%s // store C\n" % ( vgpr(addr,2), vgpr(sumIdx), nonTemporalStr )
-            elif kernel["ProblemType"]["DataType"].isDouble():
-              kStr += "flat_store_dwordx2 %s, %s%s  // store C\n" % ( vgpr(addr,2), vgpr(sumIdx*2,2), nonTemporalStr )
+                          vgpr(sumIdx), addr0, addr1, 0, nonTemporalStr)
+          elif kernel["ProblemType"]["DataType"].isSingle():
+            kStr += self.chooseGlobalStore(kernel, bps,\
+                          vgpr(sumIdx), addr0, addr1, 0, nonTemporalStr)
+          elif kernel["ProblemType"]["DataType"].isDouble():
+            kStr += self.chooseGlobalStore(kernel, bps,\
+                          vgpr(sumIdx*2,2), addr0, addr1, 0, nonTemporalStr)
 
       if edge: # subsequent batch must start with full exec mask
         kStr += inst("s_mov_b64", "exec", sgpr(fullExecMaskSgpr,2), "full mask -> exec" )
