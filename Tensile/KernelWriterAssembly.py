@@ -4647,8 +4647,11 @@ class KernelWriterAssembly(KernelWriter):
           self.vgprPool.checkIn(t)
           numVgprAvailable = self.vgprPool.availableBlock()
 
+        maxElementsPerBatch = 4 if not beta else 1000
+
         #print "NumVgprAvailable", numVgprAvailable
-        numElementsPerBatch = numVgprAvailable / numVgprsPerElement
+        numElementsPerBatch = min(numVgprAvailable / numVgprsPerElement, \
+                                  maxElementsPerBatch)
         #print "NumElementsPerBatch", numElementsPerBatch, "LimitedBySgprs", numElementsPerBatchLimitedBySgprs, "WARNING" if numElementsPerBatchLimitedBySgprs < numElementsPerBatch else "okay"
         if numElementsPerBatchLimitedBySgprs < numElementsPerBatch:
           numElementsPerBatch = numElementsPerBatchLimitedBySgprs
@@ -4657,7 +4660,8 @@ class KernelWriterAssembly(KernelWriter):
           # only do an even number of halves
           numElementsPerBatch = int((numElementsPerBatch+1)/2)*2
 
-        edgeI = True # bozo, change to edge
+        edgeI = edge  # set to True to disable vector stores
+        edgeI = True  # set to True to disable vector stores
 
         # if no atomics and no edge, then write whole vectors
         #if not atomic and not edge:
@@ -4692,25 +4696,33 @@ class KernelWriterAssembly(KernelWriter):
     return kStr
 
 
-  def chooseGlobalStore(self, kernel, bps, destVgpr, addr0, addr1, offset, extraFields, hi16=0):
+
+  ##############################################################################
+  # chooseGlobalStore : 
+  # create the store instruction for requested vector width and other parms
+  #
+  # rpv = regs per vector
+  ##############################################################################
+  def chooseGlobalStore(self, kernel, bps, destVgpr, rpv, \
+                        addr0, addr1, offset, extraFields, hi16=0):
     kStr = ""
 
     if kernel["BufferStore"]:
       if bps==2 and hi16:
         kStr += "buffer_store_short_d16_hi %s, %s, %s 0 offen offset:%u %s// store C\n" % \
-                 (destVgpr, addr0, addr1, offset, extraFields)
+                 (vgpr(destVgpr,rpv*2), addr0, addr1, offset, extraFields)
       elif bps==2 and not hi16:
         kStr += "buffer_store_short %s, %s, %s 0 offen offset:%u %s// store C\n" % \
-                 (destVgpr, addr0, addr1, offset, extraFields)
+                 (vgpr(destVgpr, rpv*2), addr0, addr1, offset, extraFields)
       elif bps==4:
         kStr += "buffer_store_dword %s, %s, %s 0 offen offset:%u %s// store C\n" % \
-                 (destVgpr, addr0, addr1, offset, extraFields)
+                 (vgpr(destVgpr, rpv), addr0, addr1, offset, extraFields)
       elif bps==8:
         kStr += "buffer_store_dwordx2 %s, %s, %s 0 offen offset:%u %s// store C\n" % \
-                 (destVgpr, addr0, addr1, offset, extraFields)
+                 (vgpr(destVgpr, rpv), addr0, addr1, offset, extraFields)
       elif bps==16:
         kStr += "buffer_store_dwordx4 %s, %s, %s 0 offen offset:%u %s// store C\n" % \
-                 (destVgpr, addr0, addr1, offset, extraFields)
+                 (vgpr(destVgpr, rpv), addr0, addr1, offset, extraFields)
       else:
         assert ("bad bps")
     else:
@@ -4772,7 +4784,7 @@ class KernelWriterAssembly(KernelWriter):
       vc1 = element[2]
       vc0 = element[3]
       gwvw = element[4]
-      print "Edge=", edge, element
+      #print "Edge=", edge, element
       if lsu:
         sumIdx = self.startVgprValuC + vc0 + d1*kernel["VectorWidth"]
       else:
@@ -4985,18 +4997,19 @@ class KernelWriterAssembly(KernelWriter):
     # rC *= alpha
     kStr += self.comment("rC *= alpha batchEements=%s"%batchElements)
     for elementIdx in range(0, len(batchElements)):
-      sumIdx = elementSumIdx[elementIdx]
-      if kernel["ProblemType"]["DataType"].isHalf():
-        if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
-          if sumIdx%2:
-            kStr += inst("v_pk_mul_f16", vgpr(sumIdx/2), vgpr(self.alphaVgpr), vgpr(sumIdx/2), "*= alpha")
-        else:
-          kStr += inst("v_mul_f32", vgpr(sumIdx), vgpr(self.alphaVgpr), vgpr(sumIdx), "*= alpha")
-          kStr += inst("v_cvt_f16_f32", vgpr(sumIdx), vgpr(sumIdx), "convert C to fp16" )
-      elif kernel["ProblemType"]["DataType"].isSingle():
-        kStr += inst("v_mul_f32", vgpr(sumIdx), sgpr("Alpha"), vgpr(sumIdx), "*= alpha" )
-      elif kernel["ProblemType"]["DataType"].isDouble():
-        kStr += inst("v_mul_f64", vgpr(sumIdx*2,2), sgpr("Alpha",2), vgpr(sumIdx*2,2), "*= alpha")
+      for vi in range(0, gwvw):
+        sumIdx = elementSumIdx[elementIdx] + vi
+        if kernel["ProblemType"]["DataType"].isHalf():
+          if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
+            if sumIdx%2:
+              kStr += inst("v_pk_mul_f16", vgpr(sumIdx/2), vgpr(self.alphaVgpr), vgpr(sumIdx/2), "*= alpha")
+          else:
+            kStr += inst("v_mul_f32", vgpr(sumIdx), vgpr(self.alphaVgpr), vgpr(sumIdx), "*= alpha")
+            kStr += inst("v_cvt_f16_f32", vgpr(sumIdx), vgpr(sumIdx), "convert C to fp16" )
+        elif kernel["ProblemType"]["DataType"].isSingle():
+          kStr += inst("v_mul_f32", vgpr(sumIdx), sgpr("Alpha"), vgpr(sumIdx), "*= alpha" )
+        elif kernel["ProblemType"]["DataType"].isDouble():
+          kStr += inst("v_mul_f64", vgpr(sumIdx*2,2), sgpr("Alpha",2), vgpr(sumIdx*2,2), "*= alpha")
 
     ########################################
     # Atomic
@@ -5247,6 +5260,7 @@ class KernelWriterAssembly(KernelWriter):
             nonTemporalStr += " slc"
 
           bps = kernel["ProblemType"]["DataType"].numBytes() * gwvw
+          rpv = kernel["ProblemType"]["DataType"].numRegisters() * gwvw
           if kernel["BufferStore"]:
             addr0 = vgpr(addr)
             addr1 = sgpr("SrdC", 4)
@@ -5257,17 +5271,17 @@ class KernelWriterAssembly(KernelWriter):
           if kernel["ProblemType"]["DataType"].isHalf():
             if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
               kStr += self.chooseGlobalStore(kernel, bps, \
-                          vgpr(sumIdx/2), addr0, addr1, 0, nonTemporalStr, \
+                          sumIdx/2, rpv, addr0, addr1, 0, nonTemporalStr, \
                           hi16=sumIdx%2)
             else:
               kStr += self.chooseGlobalStore(kernel, bps,\
-                          vgpr(sumIdx), addr0, addr1, 0, nonTemporalStr)
+                          sumIdx, rpv, addr0, addr1, 0, nonTemporalStr)
           elif kernel["ProblemType"]["DataType"].isSingle():
             kStr += self.chooseGlobalStore(kernel, bps,\
-                          vgpr(sumIdx), addr0, addr1, 0, nonTemporalStr)
+                          sumIdx, rpv, addr0, addr1, 0, nonTemporalStr)
           elif kernel["ProblemType"]["DataType"].isDouble():
             kStr += self.chooseGlobalStore(kernel, bps,\
-                          vgpr(sumIdx*2,2), addr0, addr1, 0, nonTemporalStr)
+                          sumIdx*2, rpv, addr0, addr1, 0, nonTemporalStr)
 
       if edge: # subsequent batch must start with full exec mask
         kStr += inst("s_mov_b64", "exec", sgpr(fullExecMaskSgpr,2), "full mask -> exec" )
