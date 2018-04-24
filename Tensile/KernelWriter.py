@@ -777,15 +777,19 @@ class KernelWriter:
     dkp = kernel["DisableKernelPieces"]
     # Can locally overrid these by changing True to False or
     # use the DisableKernelPieces for a quick search (see Common.py)
-    self.enable["PreLoop"]        = True and (not dkp or dkp >= -7)
-    self.enable["GlobalRead"]     = True and (not dkp or dkp >= -2)
-    self.enable["GlobalReadInc"]  = True and (not dkp or dkp >= -7)
-    self.enable["LocalWrite"]     = True and (not dkp or dkp >= -3)
-    self.enable["LocalRead"]      = True and (not dkp or dkp >= -4)
-    self.enable["Wait"]           = True and (not dkp or dkp >= -5)
-    self.enable["Sync"]           = True and (not dkp or dkp >= -5)
-    self.enable["MAC"]            = True and (not dkp or dkp >= -6)
-    self.enable["PostLoop"]       = True and (not dkp or dkp >= -1)
+    self.enable["PreLoop"]        = True and not (dkp>0 and dkp >= 7) and not dkp == -7
+    self.enable["GlobalRead"]     = True and not (dkp>0 and dkp >= 2) and not dkp == -2
+    self.enable["GlobalReadInc"]  = True and not (dkp>0 and dkp >= 7) and not dkp == -7
+    self.enable["LocalWrite"]     = True and not (dkp>0 and dkp >= 3) and not dkp == -3
+    self.enable["LocalRead"]      = True and not (dkp>0 and dkp >= 4) and not dkp == -4
+    self.enable["Wait"]           = True and not (dkp>0 and dkp >= 5) and not dkp == -5
+    self.enable["Sync"]           = True and not (dkp>0 and dkp >= 5) and not dkp == -5
+    self.enable["MAC"]            = True and not (dkp>0 and dkp >= 6) and not dkp == -6
+    self.enable["PostLoop"]       = True and not (dkp>0 and dkp >= 1) and not dkp == -1
+
+    if dkp:
+      print "\nKernelWriter enable:", self.enable
+
 
     if kernel["KernelLanguage"] == "Source":
       self.language = globalParameters["RuntimeLanguage"]
