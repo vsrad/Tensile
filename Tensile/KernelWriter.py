@@ -774,15 +774,18 @@ class KernelWriter:
   @abc.abstractmethod
   def initKernel(self, kernel, tensorParametersA, tensorParametersB ):
     self.enable = {}
-    self.enable["PreLoop"]        = kernel["DisableKernelPieces"] > -7
-    self.enable["GlobalRead"]     = kernel["DisableKernelPieces"] > -2
-    self.enable["GlobalReadInc"]  = kernel["DisableKernelPieces"] > -7
-    self.enable["LocalWrite"]     = kernel["DisableKernelPieces"] > -3
-    self.enable["LocalRead"]      = kernel["DisableKernelPieces"] > -4
-    self.enable["Wait"]           = kernel["DisableKernelPieces"] > -5
-    self.enable["Sync"]           = kernel["DisableKernelPieces"] > -5
-    self.enable["MAC"]            = kernel["DisableKernelPieces"] > -6
-    self.enable["PostLoop"]       = kernel["DisableKernelPieces"] > -1
+    dkp = kernel["DisableKernelPieces"]
+    # Can locally overrid these by changing True to False or
+    # use the DisableKernelPieces for a quick search (see Common.py)
+    self.enable["PreLoop"]        = True and (not dkp or dkp >= -7)
+    self.enable["GlobalRead"]     = True and (not dkp or dkp >= -2)
+    self.enable["GlobalReadInc"]  = True and (not dkp or dkp >= -7)
+    self.enable["LocalWrite"]     = True and (not dkp or dkp >= -3)
+    self.enable["LocalRead"]      = True and (not dkp or dkp >= -4)
+    self.enable["Wait"]           = True and (not dkp or dkp >= -5)
+    self.enable["Sync"]           = True and (not dkp or dkp >= -5)
+    self.enable["MAC"]            = True and (not dkp or dkp >= -6)
+    self.enable["PostLoop"]       = True and (not dkp or dkp >= -1)
 
     if kernel["KernelLanguage"] == "Source":
       self.language = globalParameters["RuntimeLanguage"]

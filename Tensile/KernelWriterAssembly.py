@@ -459,7 +459,7 @@ class KernelWriterAssembly(KernelWriter):
   def initKernel(self, kernel, tPA, tPB ):
     super(KernelWriterAssembly, self).initKernel(kernel, tPA, tPB)
 
-    self.do["NullKernel"]  = kernel["DisableKernelPieces"] <= -10
+    self.do["NullKernel"]  = kernel["DisableKernelPieces"] >= 9
 
     self.sgprs=collections.OrderedDict()
     self.sgprIdx = 0

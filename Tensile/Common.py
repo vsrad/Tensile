@@ -253,14 +253,14 @@ validParameters = {
 
     # Each switch is incremental, ie 3 will provide NoPostLoop+NoGlobalRead+NoLocalWrite
     # 0=Baseline
-    # -1= +NoPostLoop
-    # -2= +NoGlobalRead
-    # -3= +NoLocalWrite
-    # -4= +NoLocalRead
-    # -5= +NoWait +NoSync
-    # -6= +NoMAC
-    # -7= +NoPreLoop+ NoGlobalReadInc
-    # -10= NullKernel
+    # 1= +NoPostLoop
+    # 2= +NoGlobalRead
+    # 3= +NoLocalWrite
+    # 4= +NoLocalRead
+    # 5= +NoWait +NoSync
+    # 6= +NoMAC
+    # 7= +NoPreLoop+ NoGlobalReadInc
+    # 9= NullKernel
     "DisableKernelPieces":        range(-10,1),         # disable pieces of the kernel, for performance isolation
 
 
