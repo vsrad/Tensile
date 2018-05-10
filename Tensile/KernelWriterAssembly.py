@@ -20,7 +20,7 @@
 ################################################################################
 
 from SolutionStructs import DataType
-from Common import globalParameters, printExit, printWarning
+from Common import globalParameters, printExit, printWarning, roundint
 from KernelWriter import KernelWriter
 from math import log, ceil
 import collections
@@ -854,8 +854,9 @@ class KernelWriterAssembly(KernelWriter):
     self.localReadInstructionB = instructions["LocalRead"][ \
         self.localReadInstructionIdxB]
     # global reads per instruction
-    tPA["nrcvpi"] = int((self.globalReadInstructionA.totalWidth*self.bpr) / tPA["bpe"])
-    tPB["nrcvpi"] = int((self.globalReadInstructionB.totalWidth*self.bpr) / tPB["bpe"])
+    print "info: totalWidth=", self.globalReadInstructionA.totalWidth, self.bpr, tPA["bpe"]
+    tPA["nrcvpi"] = ((self.globalReadInstructionA.totalWidth*self.bpr) / float(tPA["bpe"]))
+    tPB["nrcvpi"] = ((self.globalReadInstructionB.totalWidth*self.bpr) / float(tPB["bpe"]))
     tPA["nwcvpi"] = int((self.localWriteInstructionA.totalWidth*self.bpr) / tPA["bpe"])
     tPB["nwcvpi"] = int((self.localWriteInstructionB.totalWidth*self.bpr) / tPB["bpe"])
 
@@ -877,10 +878,10 @@ class KernelWriterAssembly(KernelWriter):
     ####################################
     # num vgprs: global -> local elements
     if not kernel["DirectToLdsA"] or self.do["KeepDirectToLdsAlloc"]:
-      numVgprG2LA = (kernel["NumLoadsCoalescedA"] \
+      numVgprG2LA = roundint(kernel["NumLoadsCoalescedA"] \
           * kernel["NumLoadsPerpendicularA"] * kernel["GlobalLoadVectorWidthA"] * tPA["bpe"])/self.bpr
     if not kernel["DirectToLdsB"] or self.do["KeepDirectToLdsAlloc"]:
-      numVgprG2LB = (kernel["NumLoadsCoalescedB"] \
+      numVgprG2LB = roundint(kernel["NumLoadsCoalescedB"] \
           * kernel["NumLoadsPerpendicularB"] * kernel["GlobalLoadVectorWidthB"] * tPB["bpe"])/self.bpr
 
     ####################################
@@ -904,9 +905,9 @@ class KernelWriterAssembly(KernelWriter):
 
     ####################################
     # num vgprs: global read addresses
-    numGlobalReadsA = kernel["NumLoadsCoalescedA"] \
+    numGlobalReadsA = roundint(kernel["NumLoadsCoalescedA"] \
         * kernel["NumLoadsPerpendicularA"] * kernel["GlobalLoadVectorWidthA"] \
-        * self.numReadVectorComponentsA
+        * self.numReadVectorComponentsA)
     numGlobalReadInstructionsA = (numGlobalReadsA * tPA["bpe"])\
         / (self.globalReadInstructionA.blockWidth * 4)
 
@@ -915,9 +916,9 @@ class KernelWriterAssembly(KernelWriter):
     else:
       numVgprGlobalReadAddressesA = numGlobalReadInstructionsA * self.rpga
 
-    numGlobalReadsB = kernel["NumLoadsCoalescedB"] \
+    numGlobalReadsB = roundint(kernel["NumLoadsCoalescedB"] \
         * kernel["NumLoadsPerpendicularB"] * kernel["GlobalLoadVectorWidthB"] \
-        * self.numReadVectorComponentsB
+        * self.numReadVectorComponentsB)
     numGlobalReadInstructionsB = (numGlobalReadsB * tPB["bpe"]) \
         / (self.globalReadInstructionB.blockWidth * 4)
     if kernel["BufferLoad"]:
@@ -2258,7 +2259,7 @@ class KernelWriterAssembly(KernelWriter):
     kStr = ""
     numTileOffsets = tP["nrt"]
     if tP["rtc"]:
-      numTileOffsets *= tP["glvw"]
+      numTileOffsets = roundint(numTileOffsets, tP["glvw"])
     tP["vgprTileOffsets"] = self.vgprPool.checkOut(numTileOffsets)
     v = tP["vgprTileOffsets"]
     strideIdx = tP["lsc"] if tP["tlu"] else tP["lsp"]
@@ -2268,18 +2269,18 @@ class KernelWriterAssembly(KernelWriter):
       kStr += inst("v_mov_b32", vgpr(v), \
           vgpr(tP["gpr"]["tReg"]), "gro%s%s_%u_s%u"%(tP["tensorChar"], tP["tileChar"], 0, 0) )
       # l=0, s>0
-      for s in range(1, tP["glvw"]):
+      for s in range(1, roundup(tP["glvw"])):
         kStr += inst("_v_add_co_u32", vgpr(v+s), "vcc", 1, \
             vgpr(v+s-1), "gro%s%s_%u_s%u"%(tP["tensorChar"], tP["tileChar"], 0, s) )
       for l in range(1, tP["nrt"]):
         # l>0, s=0
-        kStr += inst("_v_add_co_u32", vgpr(v+l*tP["glvw"]), "vcc", stride, \
-            vgpr(v+(l-1)*tP["glvw"]), \
+        kStr += inst("_v_add_co_u32", vgpr(v+roundint(l*tP["glvw"])), "vcc", stride, \
+            vgpr(v+roundint((l-1)*tP["glvw"])), \
             "gro%s%s_%u_s%u + %s"%(tP["tensorChar"], tP["tileChar"], l, 0, strideIdx) )
         # l>0, s>0
-        for s in range(1, tP["glvw"]):
+        for s in range(1, roundup(tP["glvw"])):
           kStr += inst("_v_add_co_u32", vgpr(v+l*tP["glvw"]+s), "vcc", \
-              1, vgpr(v+l*tP["glvw"]+(s-1)), \
+              1, vgpr(v+roundint(l*tP["glvw"])+(s-1)), \
               "gro%s%s_%u_s%u"%(tP["tensorChar"], tP["tileChar"], l, s) )
     else:
       kStr += inst("v_mov_b32", vgpr(v), \
@@ -2298,7 +2299,7 @@ class KernelWriterAssembly(KernelWriter):
     kStr = ""
     numUnrollOffsets = tP["nru"]
     if tP["ruc"]:
-      numUnrollOffsets *= tP["glvw"]
+      numUnrollOffsets = roundint(numUnrollOffsets, tP["glvw"])
     tP["gpr"]["unrollOffsets"] = self.vgprPool.checkOut(numUnrollOffsets)
     v = tP["gpr"]["unrollOffsets"]
     strideIdx = (tP["lsp"] if tP["tlu"] else tP["lsc"])
@@ -2308,16 +2309,18 @@ class KernelWriterAssembly(KernelWriter):
       kStr += inst("v_mov_b32", vgpr(v), \
           vgpr(tP["gpr"]["uReg"]), "gro%s%s_%u_s%u"%(tP["tensorChar"], self.unrollChar, 0, 0) )
       # l=0, s>0
-      for s in range(1, tP["glvw"]):
+      for s in range(1, roundup(tP["glvw"])):
         kStr += inst("_v_add_co_u32", vgpr(v+s), "vcc", 1, \
             vgpr(v+s-1), "gro%s%s_%u_s%u"%(tP["tensorChar"], self.unrollChar, 0, s) )
       for l in range(1, tP["nru"]):
         # l>0, s=0
+        kStr += self.comment1("Half-GRV? l=%u" % l)
         kStr += inst("_v_add_co_u32", vgpr(v+l*tP["glvw"]), "vcc", stride, \
             vgpr(v+(l-1)*tP["glvw"]), \
             "gro%s%s_%u_s%u + %s"%(tP["tensorChar"], self.unrollChar, l, 0, strideIdx) )
         # l>0, s>0
-        for s in range(1, tP["glvw"]):
+        for s in range(1, roundup(tP["glvw"])):
+          kStr += self.comment1("Half-GRV? l=%u s=%u" % (l,s))
           kStr += inst("_v_add_co_u32", vgpr(v+l*tP["glvw"]+s), "vcc", \
               1, vgpr(v+l*tP["glvw"]+(s-1)), \
               "gro%s%s_%u_s%u"%(tP["tensorChar"], self.unrollChar, 0, s) )
@@ -2345,11 +2348,11 @@ class KernelWriterAssembly(KernelWriter):
 
     kStr = ""
     # edge value
-    margin = tP["glvw"] if tP["rtv"] else 1
+    margin = tP["glvw"] if (tP["rtv"] and tP["glvw"] >= 1) else 1
     edge = self.vgprPool.checkOut(1)
 
-
     if kernel["BufferLoad"] and kernel["PreciseBoundsCheck"]:
+      # Bozo, this code never called for precise bounds check?
       # Go to the edge. we can rely on preciseboundscheck to keep things inline
       # Results in more loads of 0 which is better for power and debug
       kStr += inst("v_mov_b32", vgpr(edge), sgpr("SizesFree+%u"%tP["idx"]), \
@@ -2401,14 +2404,14 @@ class KernelWriterAssembly(KernelWriter):
     for perp in range(0, tP["nrp"]):
       for sPerp in range(0, tP["nrpv"]):
         for para in range(0, tP["nrc"]):
-          for sPara in range(0, tP["nrcv"]/tP["nrcvpi"]):
+          for sPara in range(0, roundint(tP["nrcv"]/tP["nrcvpi"])):
             # vgpr assignments
             if tP["tlu"]:
-              vgprTile   = tileOffsets   + para*tVW + sPara*tVS
-              vgprUnroll = unrollOffsets + perp*uVW + sPerp*uVS
+              vgprTile   = tileOffsets   + roundint(para*tVW) + sPara*tVS
+              vgprUnroll = unrollOffsets + roundint(perp*uVW) + sPerp*uVS
             else:
-              vgprTile   = tileOffsets   + perp*tVW + sPara*tVS
-              vgprUnroll = unrollOffsets + para*uVW + sPerp*uVS
+              vgprTile   = tileOffsets   + roundint(perp*tVW) + sPara*tVS
+              vgprUnroll = unrollOffsets + roundint(para*uVW) + sPerp*uVS
 
             if graIdx==0 or not kernel["UseSgprForGRO"]:
               # emit global offset macro
@@ -2432,7 +2435,7 @@ class KernelWriterAssembly(KernelWriter):
 
               if kernel["BufferLoad"] and kernel["FractionalLoad"]:
                 tmpSgpr = self.getTmpSgpr(2)
-                lastValidThread = kernel[tP["lsc"]]*kernel[tP["lsp"]]/tP["glvw"]
+                lastValidThread = roundint(kernel[tP["lsc"]]*kernel[tP["lsp"]]/tP["glvw"])
                 if lastValidThread < kernel["NumThreads"]:
                   kStr += "// Offset only valid for %u/%u threads inside the PerLoadTile\n" \
                        % (lastValidThread, kernel["NumThreads"])
@@ -2460,16 +2463,16 @@ class KernelWriterAssembly(KernelWriter):
                 scalarGro = self.getTmpSgpr(1)
 
               if tP["tlu"]:
-                tileStride   = kernel[tP["lsc"]] * (para*tVW + sPara*tVS)
-                unrollStride = kernel[tP["lsp"]] * (perp*uVW + sPerp*uVS)
+                tileStride   = kernel[tP["lsc"]] * (roundint(para*tVW) + sPara*tVS)
+                unrollStride = kernel[tP["lsp"]] * (roundint(perp*uVW) + sPerp*uVS)
                 kStr += inst("s_mul_i32", sgpr(scalarGro), sgpr("Strides%s"%tc), unrollStride, \
                              "compute offset diff (scaled unrollDim)")
                 if tileStride:
                   kStr += inst("s_add_u32", sgpr(scalarGro), sgpr(scalarGro), tileStride, \
                              "compute offset diff (tileDim)")
               else:
-                tileStride   = kernel[tP["lsp"]] * (perp*tVW + sPara*tVS)
-                unrollStride = kernel[tP["lsc"]] * (para*uVW + sPerp*uVS)
+                tileStride   = kernel[tP["lsp"]] * (roundint(perp*tVW) + sPara*tVS)
+                unrollStride = kernel[tP["lsc"]] * (roundint(para*uVW) + sPerp*uVS)
                 kStr += inst("s_mul_i32", sgpr(scalarGro), sgpr("Strides%s"%tc), tileStride, \
                              "compute offset diff (scaled tileDim)")
                 if unrollStride:
@@ -2562,7 +2565,7 @@ class KernelWriterAssembly(KernelWriter):
       for perp in range(0, tP["nrp"]):
         for sPerp in range(0, tP["nrpv"]):
           for para in range(0, tP["nrc"]):
-            for sPara in range(0, tP["nrcv"]/tP["nrcvpi"]):
+            for sPara in range(0, roundint(tP["nrcv"]/tP["nrcvpi"])):
 
               comment = "gRA%s_%u_%u_%u_%u = addr%s+grO%s_%u_%u_%u_%u" \
                   % (tP["tensorChar"], para, sPara, perp, sPerp, \
@@ -2722,12 +2725,13 @@ class KernelWriterAssembly(KernelWriter):
 
     #LSC_ * LSP_
     numBytesPerElement = kernel["ProblemType"]["DataType"].numBytes()
-    validWIPerLoad = kernel[tP["lsc"]] * kernel[tP["lsp"]] / tP["glvw"]
+    validWIPerLoad = roundint(kernel[tP["lsc"]] * kernel[tP["lsp"]] / tP["glvw"])
     validBytesPerLoad = kernel[tP["lsc"]] * kernel[tP["lsp"]] * numBytesPerElement
-    maxBytesPerLoad = kernel["NumThreads"] * tP["glvw"] * numBytesPerElement
+    maxBytesPerLoad = roundint(kernel["NumThreads"] * tP["glvw"] * numBytesPerElement)
 
     assert (validBytesPerLoad <= maxBytesPerLoad)
-    assert (kernel[tP["lsc"]] * kernel[tP["lsp"]] % tP["glvw"] == 0)
+    if tP["glvw"] > 1:
+      assert (kernel[tP["lsc"]] * kernel[tP["lsp"]] % tP["glvw"] == 0)
 
     if validBytesPerLoad != maxBytesPerLoad:
       tmpSgpr = self.getTmpSgpr(1)
@@ -2784,11 +2788,10 @@ class KernelWriterAssembly(KernelWriter):
             lspaOffset += s # * VW could go here, check transpose options
           if tP["tlu"]:
             lspaOffset *= kernel[tP["mt"]]
-            #lspa *= tP["glvw"]
           else:
             lscaOffset *= kernel[tP["mt"]]
           if tP["tlu"] == tP["grcv"]:
-            lspaOffset *= tP["glvw"]
+            lspaOffset = roundint(lspaOffset*tP["glvw"])
           offset = lspaOffset + lscaOffset
 #jgolds which bpe here? assuming tP
           offset *= tP["bpe"]
@@ -3240,7 +3243,7 @@ class KernelWriterAssembly(KernelWriter):
       for perp in range(0, tP["nrp"]):
         for sPerp in range(0, tP["nrpv"]):
           for para in range(0, tP["nrc"]):
-            for sPara in range(0, tP["nrcv"]/tP["nrcvpi"]):
+            for sPara in range(0, roundint(tP["nrcv"]/tP["nrcvpi"])):
               if self.globalReadIncsUseVgpr:
                 kStr += inst("_v_add_co_u32 ", \
                     vgpr("GlobalReadAddr%s+%u+0"%(tP["tensorChar"], graIdx)), \
@@ -3405,8 +3408,8 @@ class KernelWriterAssembly(KernelWriter):
     for perp in range(0, tP["nrp"]):
       for sPerp in range(0, tP["nrpv"]):
         for para in range(0, tP["nrc"]):
-          for sPara in range(0, tP["nrcv"]/tP["nrcvpi"]):
-            i = sPara + (tP["nrcv"]/tP["nrcvpi"]) * (para + tP["nrc"] * (sPerp + tP["nrpv"] * perp))
+          for sPara in range(0, roundint(tP["nrcv"]/tP["nrcvpi"])):
+            i = sPara + roundint(tP["nrcv"]/tP["nrcvpi"]) * (para + tP["nrc"] * (sPerp + tP["nrpv"] * perp))
             graIdx = i * self.rpgo if kernel["BufferLoad"] else i * self.rpga
             g2lIdx = i * loadWidth
             if guardK:
@@ -3726,13 +3729,14 @@ class KernelWriterAssembly(KernelWriter):
         lspaOffset += sPerp
       elif tP["wuc"] == tP["grcv"]:
         lscaOffset += sPara
-      i = sPara + (tP["nrcv"]/tP["nrcvpi"]) * (para + tP["nrc"] * (sPerp + tP["nrpv"] * perp))
+      i = sPara + roundint(tP["nrcv"]/tP["nrcvpi"]) * (para + tP["nrc"] * (sPerp + tP["nrpv"] * perp))
     else:
       if tP["wtc"] == tP["grcv"]:
         lscaOffset += sPara
       elif tP["wuc"] == tP["grcv"]:
         lspaOffset += sPerp
-      i = sPara + (tP["nrcv"]/tP["nrcvpi"]) * (para * tP["glvw"] + tP["nrc"] * (sPerp + tP["glvw"] * tP["nrpv"] * perp ))
+      i = sPara + roundint(tP["nrcv"]/tP["nrcvpi"]) * \
+          (roundint(para * tP["glvw"]) + tP["nrc"] * (sPerp + roundint(tP["glvw"] * tP["nrpv"] * perp) ))
 
     #if not tP["tlu"]:
     #  tmp = sPara
@@ -3895,8 +3899,8 @@ class KernelWriterAssembly(KernelWriter):
     if 0:
       kStr += inst("s_barrier", "temp debug wait to check sync issue" )
 
-    #if 1 and tP["isB"]:
-    if 0 and self.localWriteDoCnt >= 2:
+    if 0 and tP["isB"]:
+    #if 0 and self.localWriteDoCnt >= 2:
       kStr += inst("s_barrier", "dump LDS" )
       kStr += "s_waitcnt lgkmcnt(0) & vmcnt(0)\n"
       kStr += self.bomb(105)
@@ -4059,7 +4063,7 @@ class KernelWriterAssembly(KernelWriter):
 
     # glvw
     vw = tP["glvw"]
-    numVectors = kernel[tP["tt"]]/vw
+    numVectors = roundint(kernel[tP["tt"]]/vw)
 
     # labels
     svrLabels = []

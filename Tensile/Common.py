@@ -228,7 +228,8 @@ validParameters = {
     # G2L registers used to stage data.  Also replaces the
     # local write offset with an SGPR.
     # For an 8x8 TT with PrefetchGlobalRead=1 this can save 33 VGPRs.
-    "DirectToLds":                [ False, True],
+    # DirectToLds=2 will expand LDS to make room for the larger fetch.  Only works if FractionalLoad is enabled.
+    "DirectToLds":                [ 0, 1, 2],
 
     # Use buffer limit field to precisely check array bounds.
     # Requires BufferLoad.  Eliminate the shift logic and
@@ -286,7 +287,7 @@ validParameters = {
     # and eliminates the pointer unshift logic
     # -1 : Set GlobalReadVectorWidth =  VectorWidth
     #  1 cannot be used for half type.
-    "GlobalReadVectorWidth":      [ -1, 1, 2, 3, 4, 6, 8 ],
+    "GlobalReadVectorWidth":      [ -1, 0.5, 1, 2, 3, 4, 6, 8 ],
 
     # threads should read/write/operate on this many contiguous elements. VW=4 on sgemm means read/write float4's.
     # -1 means use the largest vector width up to 128 bits. Using a VW too large which results in >16bytes/thread isn't supported
@@ -554,6 +555,15 @@ def printExit(message):
   print "Tensile::FATAL: %s" % message
   sys.stdout.flush()
   sys.exit(-1)
+
+def roundup(value):
+  return int(ceil(value))
+
+# convert to int, and check to make sure we were already close
+def roundint(value):
+  valueI= int(round(value))
+  assert (valueI - value < 0.01)
+  return valueI
 
 ################################################################################
 # Locate Executables

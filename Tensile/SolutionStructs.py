@@ -21,7 +21,7 @@
 
 
 import sys,traceback
-from Common import globalParameters, defaultProblemType, assignParameterWithDefault, printExit, assignParameterRequired, defaultSolution, validParameters, print1
+from Common import globalParameters, defaultProblemType, assignParameterWithDefault, printExit, assignParameterRequired, defaultSolution, validParameters, print1, roundint
 from copy import deepcopy
 from math import ceil, log
 
@@ -729,6 +729,7 @@ class Solution:
           reject(None, "pv %u * totalVectors %u != NumThreads %u" \
               % (pv, totalVectors, state["NumThreads"]))
           validDepthU = False
+        assert isinstance(state["GlobalReadVectorWidth"], int) # else next statement won't work..
         if state["GlobalReadVectorWidth"] % pv != 0:
           reject(None, "NumThreads %u %% totalVectors %u != 0" \
               % (state["NumThreads"], totalVectors))
@@ -741,6 +742,7 @@ class Solution:
               % (totalVectors, state["NumThreads"]))
           validDepthU = False
 
+    assert isinstance(state["GlobalReadVectorWidth"], int) # else next statement won't work..
     state["GlobalLoadVectorWidth%s"%tc] = state["GlobalReadVectorWidth"] / pv
 
     # NumLoads is NOT used on the fractional path
@@ -895,11 +897,20 @@ class Solution:
     # Each iteration divides GRWV by 2 which provides finer granularity
     # and a possible opportunity to handle the lsc
     grvw = state["GlobalReadVectorWidth"]
-    minVw = 2 if state["ProblemType"]["DataType"].isHalf() else 1
+    if state["ProblemType"]["DataType"].isHalf():
+      minVw = 2
+    elif state["ProblemType"]["DataType"].isSingle():
+      minVw = 1
+    elif state["ProblemType"]["DataType"].isDouble():
+      minVw = 0.5
+    else:
+      assert(0, "Unknown data type")
+
+
     bestVw = -1
     while grvw >= minVw:
       # Per instruction across the entire group:
-      elementsLoadedPerInst = state["NumThreads"]*grvw
+      elementsLoadedPerInst = roundint(state["NumThreads"]*grvw)
       # LSC, LSP - #elements loaded along specified dim with each load
       if parDim >= elementsLoadedPerInst:
         # entire work-group can work on (part) of the same row
@@ -916,7 +927,7 @@ class Solution:
 
       # Vector loads can't wrap to next P dim, so LSC must be divisible by vector elements;
       print "  lsc search : lsc(%u) %% grvw(%u) = %u (?0)" % (state["LSC%s"%tc], grvw, state["LSC%s"%tc] % grvw)
-      if state["LSC%s"%tc] % grvw == 0:
+      if roundint(state["LSC%s"%tc] % grvw) == 0:
         bestVw = grvw
         # Try to shrink GRVW if possible while keeping same LSC and LSP:
         # For example, avoid cases where we use a GRVW=4 with many empty addresses
@@ -1043,7 +1054,7 @@ class Solution:
       # reject - VW too big
       state["Valid"] = False
 
-    if state["GlobalReadVectorWidth"]*state["ProblemType"]["DataType"].numBytes() > 16:
+    if roundint(state["GlobalReadVectorWidth"]*state["ProblemType"]["DataType"].numBytes()) > 16:
       # reject - GRVW too big
       state["Valid"] = False
 
@@ -1134,18 +1145,18 @@ class Solution:
         if not Solution.setGlobalLoadTileDimFractional(state, "B", depthU):
           validDepthU = False
       else:
-        tva = totalElementsA / state["GlobalReadVectorWidth"]
-        tvb = totalElementsB / state["GlobalReadVectorWidth"]
+        tva = roundint(totalElementsA / state["GlobalReadVectorWidth"])
+        tvb = roundint(totalElementsB / state["GlobalReadVectorWidth"])
         if not Solution.setGlobalLoadVectorWidth(state, "A", tva):
           validDepthU = False
         if not Solution.setGlobalLoadVectorWidth(state, "B", tvb):
           validDepthU = False
 
       # Now convert elements to vectors based on GlobalReadVectorWidth
-      totalVectorsCoalescedA = totalElementsCoalescedA / state["GlobalReadVectorWidth"]
-      totalVectorsCoalescedB = totalElementsCoalescedB / state["GlobalReadVectorWidth"]
-      totalVectorsA = totalElementsA / state["GlobalReadVectorWidth"]
-      totalVectorsB = totalElementsB / state["GlobalReadVectorWidth"]
+      totalVectorsCoalescedA = roundint(totalElementsCoalescedA / state["GlobalReadVectorWidth"])
+      totalVectorsCoalescedB = roundint(totalElementsCoalescedB / state["GlobalReadVectorWidth"])
+      totalVectorsA = roundint(totalElementsA / state["GlobalReadVectorWidth"])
+      totalVectorsB = roundint(totalElementsB / state["GlobalReadVectorWidth"])
 
       if 0:
         print "info:", pvar(state, "NumThreads"), pvar(state, "DepthU"), \
@@ -1356,20 +1367,20 @@ class Solution:
       # If fractional, ensure we are using all of the bytes that will be delivered
 
       if elementMultipleOk \
-        and state["NumThreads"] % globalParameters["WavefrontWidth"] == 0:
+        and (state["DirectToLds"] == 2 or state["NumThreads"] % globalParameters["WavefrontWidth"] == 0):
 
         if (state["GlobalLoadVectorWidthA"] * numBytes == 4) \
           and not state["ProblemType"]["TransposeA"] \
-          and state["LSCA"] * numBytes == 256 * wavefronts \
-          and state["LSCA"] * numBytes == state["NumThreads"] * 4 :
+          and (state["DirectToLds"] == 2 or state["LSCA"] * numBytes == 256 * wavefronts) \
+          and (state["DirectToLds"] == 2 or state["LSCA"] * numBytes == state["NumThreads"] * 4) :
           state["DirectToLdsA"] = True
           state["LocalWriteUseSgprA"] = True
 
         if (state["GlobalLoadVectorWidthB"] * state["ProblemType"]["DataType"].numBytes() == 4) \
           and state["ProblemType"]["TransposeB"] \
           and elementMultipleOk \
-          and state["LSCB"] * numBytes == 256 * wavefronts \
-          and state["LSCB"] * numBytes == state["NumThreads"] * 4 :
+          and (state["DirectToLds"] == 2 or state["LSCB"] * numBytes == 256 * wavefronts) \
+          and (state["DirectToLds"] == 2 or state["LSCB"] * numBytes == state["NumThreads"] * 4) :
           state["DirectToLdsB"] = True
           state["LocalWriteUseSgprB"] = True
 
@@ -1569,6 +1580,8 @@ class Solution:
         return "%02u" % value
       else: # -1 -> n1
         return "n%01u" % abs(value)
+    elif isinstance(value, float):
+        return "%f" % value
     elif isinstance(value, ProblemType):
       return str(value)
     elif isinstance(value, list):
