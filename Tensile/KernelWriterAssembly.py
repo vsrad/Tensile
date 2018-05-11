@@ -636,7 +636,17 @@ class KernelWriterAssembly(KernelWriter):
             ds_read_b64, ds_read2_b32, ds_read_b32 ],
           "LocalWrite": [ ds_write_b128, ds_write2_b64,
             ds_write_b64, ds_write2_b32, ds_write_b32, ds_write_b16 ]
-          } # 900
+          }, # 900
+        (9,0,6): {
+          "GlobalRead": [ chosen_load_dwordx4, chosen_load_dwordx2,
+            chosen_load_dword ],
+          "GlobalWrite": [ flat_store_dwordx4, flat_store_dwordx2,
+            flat_store_dword ],
+          "LocalRead": [ ds_read_b128, ds_read2_b64,
+            ds_read_b64, ds_read2_b32, ds_read_b32 ],
+          "LocalWrite": [ ds_write_b128, ds_write2_b64,
+            ds_write_b64, ds_write2_b32, ds_write_b32, ds_write_b16 ]
+          } # 906
         }
 
 
@@ -1613,7 +1623,7 @@ class KernelWriterAssembly(KernelWriter):
                     bStr = "v[%s+%u]" \
                         % ("vgprValuB_X%u_I%u"%(m,iui), blockB)
                     kStr += "v_mac_f16 %s, %s, %s%s" % (cStr, aStr, bStr, self.endLine) # FIXME op_sel
-              elif self.version == (9,0,0):
+              elif self.version == (9,0,0) or self.version == (9,0,6):
                 if kernel["ProblemType"]["HighPrecisionAccumulate"]:
                   # we treat HighPrecisionAccumulate as expanded packed math
                   b = blockB*2
