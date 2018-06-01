@@ -848,6 +848,9 @@ class Solution:
   #   PerLoadTile is always rectangular.
   #   The area (LSC*LSP) can be larger than NumThreads. In this case, some
   #   threads will generate a dummy OOB GRO.
+  #   Related fields:
+  #     LVC = LSC/GRVW  (LVCA = LSCA/GLVWA)
+  #     LVP = LSP/GRVW  (LVPA = LSPA/GLVWA)
   #
   # NumLoadsCoalesced and NumLoadsPerpendicular define the number of times the
   #   PerLoadTile is loaded in each dimension to fetch the LoadTile
@@ -888,7 +891,7 @@ class Solution:
       perpDim = state["MacroTile%s"%tc]
 
     if dbFract:
-      print "\ninfo: %s Fractional MT%u_%u_%u Par=%u Perp=%u WG02%u_%02u_%02u NumThreads=%u GRWV=%u" \
+        print "\ninfo: %s Fractional MT%u_%u_%u Par=%u Perp=%u WG%02u_%02u_%02u NumThreads=%u GRWV=%u" \
           % (tc, state["MacroTile0"], state["MacroTile1"], depthU, \
             parDim, perpDim, \
             state["WorkGroup"][0], state["WorkGroup"][1], state["LocalSplitU"], \
