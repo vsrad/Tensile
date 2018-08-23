@@ -46,10 +46,10 @@
 #define TensileComplexDouble double2
 #define TensileHalf _Float16
 
-inline std::ostream& operator<<(std::ostream& os, const _Float16& dt)  
-{  
+inline std::ostream& operator<<(std::ostream& os, const _Float16& dt)
+{
    os << (float)(dt);
-   return os;  
+   return os;
 }
 
 #endif // HIP
@@ -98,8 +98,25 @@ public:
     return false; // get here if all indices are equal
   };
 
+  bool operator== (const ProblemSizes<NumSizes, LastSummationIdx, Free0Idx> & p) const
+  {
+    for (int i=0; i<NumSizes; i++) {
+      if (p.sizes[i] != this->sizes[i])
+        return false;
+    }
+    return true;
+  };
+
   SizeType lastSummationSize() const { return sizes[LastSummationIdx]; };
   SizeType free0Size() const { return sizes[Free0Idx]; };
+
+  size_t hash() const {
+    size_t h=0;
+    for (int i=0; i<NumSizes; i++) {
+      h ^= sizes[i] + 0x9b9773e99e3779b9 + (h<<6) + (h>>2);
+    }
+    return h;
+  }
 
 private:
   template<int I, typename T>
@@ -118,6 +135,14 @@ private:
 private:
   // Data members:
   SizeType sizes[NumSizes];
+};
+
+template <class Object>
+struct ObjectHasher {
+    size_t operator()(const Object &o ) const
+    {
+      return o.hash();
+    }
 };
 
 
