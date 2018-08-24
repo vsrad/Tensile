@@ -244,37 +244,39 @@ private:
 // These are assertions used to generate the solution
 // Must be checked by the runtime before launchin the solution
 struct AssertionProperties {
-  AssertionProperties(unsigned x_summationElementMultiple,
-                      unsigned x_free0ElementMultiple)
-    : summationElementMultiple(x_summationElementMultiple),
-      free0ElementMultiple(x_free0ElementMultiple)
+  AssertionProperties(unsigned summationElementMultiple,
+                      unsigned free0ElementMultiple)
+    : _summationElementMultiple(summationElementMultiple),
+      _free0ElementMultiple(free0ElementMultiple)
      {}
 
   template<class ProblemSizes>
   AssertionProperties(const ProblemSizes &p, const ProblemProperties *props) {
-    summationElementMultiple = 1; // problem summation element multiple
+    _summationElementMultiple = 1; // problem summation element multiple
     auto sumSize = p.sizes()[props->lastSummationIdx()];
-    if ((sumSize & 0x7) == 0) summationElementMultiple=8;
-    else if ((sumSize & 0x3) == 0) summationElementMultiple=4;
-    else if ((sumSize & 0x1) == 0) summationElementMultiple=2;
+    if ((sumSize & 0x7) == 0) _summationElementMultiple=8;
+    else if ((sumSize & 0x3) == 0) _summationElementMultiple=4;
+    else if ((sumSize & 0x1) == 0) _summationElementMultiple=2;
 
     auto free0Size = p.sizes()[props->free0Idx()];
-    free0ElementMultiple = 1; // problem free0 element multiple
-    if ((free0Size & 0x7) == 0) free0ElementMultiple=8;
-    else if ((free0Size & 0x3) == 0) free0ElementMultiple=4;
-    else if ((free0Size & 0x1) == 0) free0ElementMultiple=2;
+    _free0ElementMultiple = 1; // problem free0 element multiple
+    if ((free0Size & 0x7) == 0) _free0ElementMultiple=8;
+    else if ((free0Size & 0x3) == 0) _free0ElementMultiple=4;
+    else if ((free0Size & 0x1) == 0) _free0ElementMultiple=2;
+
+
 
   };
 
   // Returns True if this AsssertionProperties meet the requirements for the specified soluition
   // (this object represents the 'Problem')
   bool validForSolution(const AssertionProperties &solutionAssertions) {
-    return (this->summationElementMultiple >= solutionAssertions.summationElementMultiple) &&
-           (this->free0ElementMultiple >= solutionAssertions.free0ElementMultiple);
+    return (this->_summationElementMultiple >= solutionAssertions._summationElementMultiple) &&
+           (this->_free0ElementMultiple >= solutionAssertions._free0ElementMultiple);
   }
 
-  unsigned summationElementMultiple;
-  unsigned free0ElementMultiple;;
+  unsigned _summationElementMultiple;
+  unsigned _free0ElementMultiple;;
 };
 
 
