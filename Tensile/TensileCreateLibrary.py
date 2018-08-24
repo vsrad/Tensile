@@ -414,6 +414,18 @@ def writeLogic(outputPath, logicData, solutionWriter ):
         s += "#include \"%s.h\"\n" % solutionName
 
     ########################################
+    # Per-problem constants here:
+    # These are common for all schedules and thus do not include schedule name (vega,hip,etc)
+    solutionPointerType = "TensileSolutionPointer_%s" % problemType
+    s += "typedef SolutionInfo<%s> SolutionInfo_%s;\n\n" % (solutionPointerType, problemType)
+    s += "static const ProblemProperties problemProperties_%s( " % problemType
+    s += listToInitializer(problemType["IndicesFree"]) + ", "
+    s += listToInitializer(problemType["IndicesSummation"]) + ", "
+    s += listToInitializer(problemType["IndicesBatch"])
+    s += ");\n"
+
+
+    ########################################
     # implement per-Schedule functions in source
     s += "/*******************************************************************************\n * Per-Schedule Functions\n *******************************************************************************/"
     for scheduleTuple in logicData[problemType]:
@@ -690,9 +702,7 @@ def writeSolutionAndExactTable(schedProbName, problemType, \
                                solutionsForSchedule, solutionNames, exactLogic):
   s = ""
   s += "// solution table\n"
-  solutionPointerType = "TensileSolutionPointer_%s" % problemType
-  s += "typedef SolutionInfo<%s> SolutionInfo_%s;\n\n" % (solutionPointerType, schedProbName)
-  s += "static const SolutionInfo_%s solutionTable_%s[] = {\n" % (schedProbName, schedProbName)
+  s += "static const SolutionInfo_%s solutionTable_%s[] = {\n" % (problemType, schedProbName)
   for i in range(0, len(solutionsForSchedule)):
     solution = solutionsForSchedule[i]
     solutionName = solutionNames[i]
@@ -708,11 +718,6 @@ def writeSolutionAndExactTable(schedProbName, problemType, \
 
   # Write the exact problems here
   s += "// embedded exact problems and selected solution\n"
-  s += "static const ProblemProperties problemProperties_%s( " % problemType
-  s += listToInitializer(problemType["IndicesFree"]) + ", "
-  s += listToInitializer(problemType["IndicesSummation"]) + ", "
-  s += listToInitializer(problemType["IndicesBatch"])
-  s += ");\n"
   s += "static const std::pair<const ProblemSizes_%s, int> embeddedExactTable_%s[] = {\n" % (problemType,schedProbName)
   for ruleIdx in range(0, len(exactLogic)):
     rule = exactLogic[ruleIdx]
@@ -732,7 +737,7 @@ def writeSolutionAndExactTable(schedProbName, problemType, \
   s += "};\n\n"
 
   # Create a solution mapper and init with the table above:
-  s += "static SolutionMapper<ProblemSizes_%s,SolutionInfo_%s>\n" % (problemType, schedProbName)
+  s += "static SolutionMapper<ProblemSizes_%s,SolutionInfo_%s>\n" % (problemType, problemType)
   s +=  "  solutionMapper_%s(solutionTable_%s, %u, embeddedExactTable_%s, %u, &problemProperties_%s);\n" \
           % (schedProbName, schedProbName, len(solutionsForSchedule), schedProbName, len(exactLogic), problemType)
   return s
