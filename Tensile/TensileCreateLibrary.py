@@ -19,7 +19,7 @@
 # CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ################################################################################
 # This script only gets called by CMake
-from Common import globalParameters, HR, print1, print2, printExit, ensurePath, CHeader, CMakeHeader, assignGlobalParameters, ProgressBar
+from Common import globalParameters, HR, print1, print2, printExit, ensurePath, CHeader, CMakeHeader, assignGlobalParameters, ProgressBar, listToInitializer
 from SolutionStructs import Solution
 import YAMLIO
 from SolutionWriter import SolutionWriter
@@ -362,8 +362,7 @@ def writeLogic(outputPath, logicData, solutionWriter ):
           if i < len(argListData)-1 else ");\n\n")
 
     numSizes = problemType["TotalIndices"];
-    h += "typedef ProblemSizes<%u, %u, %u> ProblemSizes_%s;\n" \
-        % (numSizes, problemType["IndicesSummation"][-1], problemType["IndicesFree"][0], problemType)
+    h += "typedef ProblemSizes<%u> ProblemSizes_%s;\n" % (numSizes,problemType)
     if 0:
       lastStrideC = problemType["NumIndicesC"]
       lastStrideA = len(problemType["IndexAssignmentsA"])
@@ -709,6 +708,11 @@ def writeSolutionAndExactTable(schedProbName, problemType, \
 
   # Write the exact problems here
   s += "// embedded exact problems and selected solution\n"
+  s += "static const ProblemProperties problemProperties_%s( " % problemType
+  s += listToInitializer(problemType["IndicesFree"]) + ", "
+  s += listToInitializer(problemType["IndicesSummation"]) + ", "
+  s += listToInitializer(problemType["IndicesBatch"])
+  s += ");\n"
   s += "static const std::pair<const ProblemSizes_%s, int> embeddedExactTable_%s[] = {\n" % (problemType,schedProbName)
   for ruleIdx in range(0, len(exactLogic)):
     rule = exactLogic[ruleIdx]
@@ -720,7 +724,7 @@ def writeSolutionAndExactTable(schedProbName, problemType, \
       if i == 0:
         s += "%u" % problemSize[i];
       else:
-        s += ",%u" % problemSize[i];
+        s += ", %u" % problemSize[i];
     s += "}, %u}" % (solutionIdx)
     s += "," if ruleIdx != len(exactLogic)-1 else " "
     s += " // %.0f GFlop/s" % (solutionGFlops)
@@ -729,8 +733,8 @@ def writeSolutionAndExactTable(schedProbName, problemType, \
 
   # Create a solution mapper and init with the table above:
   s += "static SolutionMapper<ProblemSizes_%s,SolutionInfo_%s>\n" % (problemType, schedProbName)
-  s +=  "  solutionMapper_%s(solutionTable_%s, %u, embeddedExactTable_%s, %u);\n" \
-          % (schedProbName, schedProbName, len(solutionsForSchedule), schedProbName, len(exactLogic))
+  s +=  "  solutionMapper_%s(solutionTable_%s, %u, embeddedExactTable_%s, %u, &problemProperties_%s);\n" \
+          % (schedProbName, schedProbName, len(solutionsForSchedule), schedProbName, len(exactLogic), problemType)
   return s
 
 
