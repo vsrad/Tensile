@@ -33,6 +33,8 @@ int main( int argc, char *argv[] ) {
   if (sizeof(size_t) != 8) {
     std::cout << "WARNING: Executable not 64-bit." << std::endl;
   }
+  int seed = time(NULL);
+  srand(seed);
 
   // parse command line parameters
   parseCommandLineParameters(argc, argv);

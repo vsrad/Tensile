@@ -26,6 +26,7 @@
 #include "ClientParameters.h"
 #include "DeviceStats.h"
 #include "TensorUtils.h"
+//#include "BenchmarkSolutions.h"
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -1243,8 +1244,6 @@ void initData(
     DataType *beta,
     DataType **referenceC,
     DataType **deviceOnHostC) {
-  int seed = time(NULL);
-  srand(seed);
 
   // initialize alpha
   if (initAlpha == 0) {

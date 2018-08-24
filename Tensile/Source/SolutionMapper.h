@@ -178,3 +178,17 @@ int find_algorithm_static(
 
   return solutionIdx;
 }
+
+
+#if 0
+template <DataType>
+int find_algorithm_autotune(
+    const ProblemParmsType &p,
+    const SolutionMapper<ProblemParmsType, SolutionInfoType> &smapper
+{
+  // first get a list of topN most likely static matches - could be all the solutions
+  //
+  // then call
+  benchmarkAllSolutionsForSize2(p);
+}
+#endif

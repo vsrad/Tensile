@@ -34,6 +34,8 @@
 #define TensileComplexDouble cl_double2
 #define TensileHalf cl_half
 
+typedef cl_mem GpuMemType;
+
 // HIP
 #else
 #include <hip/hip_runtime.h>
@@ -45,6 +47,8 @@
 #define TensileComplexFloat float2
 #define TensileComplexDouble double2
 #define TensileHalf _Float16
+
+typedef void * GpuMemType;
 
 inline std::ostream& operator<<(std::ostream& os, const _Float16& dt)
 {
@@ -256,7 +260,11 @@ struct AssertionProperties {
 };
 
 
-// solution info
+// base class for solution info
+// TensileCreateLibrary.cpp will create a typedef for each specific SolutionInfo, ie
+// SolutionInfo_vega10_Cijk_Ailk_Bljk_SB
+// Some templates below use a parm called SolutionInfoType which can be any of these
+// generated types.
 template <typename F>
 struct SolutionInfo {
   F                       functionPtr;

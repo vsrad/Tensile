@@ -1,0 +1,37 @@
+- Add specializeData w/o globals
+- strides - how to handle
+- alpha/beta = ?
+
+
+- Refactor the client
+- Goals:
+  - Support a standalone function which runs set of solutions and returns index of the fastest.
+  - Create new find_algorithm_autotune
+  - Will be called alongside find_algorithm_static - but additionally can benchmark the specified problem against a set of solutions.
+
+- Requirements:
+  - Solution specification:
+    - Can accept a solution table and an integer array of solution indices to run.
+      (Intent is that user may prune the set of solutions to autotune using a static best-fit algoriothm then auto-tune the remaining set)
+    - Also can efficiently search all solutions in the specified table
+  - Support optional elements to verify
+    - parm : size_t numberOfElementsToVerify
+    - 0 means no verification; -1 means verify all; otherwise specify number of elements to verify
+  -
+
+- Architecture:
+  - Client.h has existing benchmarking and verification code but contains many clunky global variables
+     - Extract code to BenchmarkSolutions.h and refactor to remove global variables
+  - Need to compute strides to call GEMM routine
+  - GEMM routine is generatedCallToSolution - which is auto-generated
+      - Pass SolutionInfoType rather than solutionIdx and global table
+      - As second steps:
+        - Move ASEM/etc checking to be based on the SolutionTable
+  - Unify ClientSolutionInfo and SolutionInfo
+
+
+Verification Cases:
+- Make sure it works for OpenCL and HIP runtimes.
+
+
+
