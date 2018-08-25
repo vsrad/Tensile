@@ -705,7 +705,7 @@ def writeSolutionAndExactTable(schedProbName, problemType, \
   s += "};\n\n"
 
   # Write the exact problems here
-  s += "// embedded exact problems and selected solution\n"
+  s += "// table of exact problem dims and selected solutionIdx\n"
   s += "static const std::pair<const ProblemSizes_%s, int> embeddedExactTable_%s[] = {\n" % (problemType,schedProbName)
   for ruleIdx in range(0, len(exactLogic)):
     rule = exactLogic[ruleIdx]
