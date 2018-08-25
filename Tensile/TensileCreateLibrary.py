@@ -630,10 +630,10 @@ def writeLogic(outputPath, logicData, solutionWriter ):
     s += "  Map_%s::iterator iter = solutionMap_%s.find(key);\n" \
         % (problemType, problemType)
     s += "  if (iter != solutionMap_%s.end()) {\n" % problemType
-    s += 'printf("hit cache\\n");'
+    #s += 'printf("hit cache\\n");'
     s += "    return iter->second;\n"
     s += "  } else {\n"
-    s += 'printf("missed cache\\n");'
+    #s += 'printf("missed cache\\n");'
     s += "    TensileSolutionPointer_%s ptr = tensileGetSolutionPointerUncached_%s(\n" \
         % (problemType, problemType)
     for i in range(0, len(argListStream)):
@@ -701,7 +701,7 @@ def writeSolutionAndExactTable(schedProbName, problemType, \
   for i in range(0, len(solutionsForSchedule)):
     solution = solutionsForSchedule[i]
     solutionName = solutionNames[i]
-    s += "  {%s, \"%s~\", {%d, %d, %d} }%s // %d" % \
+    s += "  {%s, \"%s\", {%d, %d, %d} }%s // %d" % \
       (solutionName, solutionName,
         solution["AssertSummationElementMultiple"],
         solution["AssertFree0ElementMultiple"],
