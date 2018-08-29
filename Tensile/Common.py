@@ -435,7 +435,7 @@ defaultBenchmarkCommonParameters = [
     {"UseSgprForGRO":             [ -1 ] },
     {"AssertSummationElementMultiple": [ 1 ] },
     {"AssertFree0ElementMultiple": [ 1 ] },
-    {"AssertMinApproxSize          ": [ -1 ] },
+    {"AssertMinApproxSize":        [ -1 ] },
     {"CheckTensorDimAsserts"      : [ False ] },
 
     {"GlobalSplitU":              [ 1 ] },
