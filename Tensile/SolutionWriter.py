@@ -107,7 +107,7 @@ class SolutionWriter:
       t += "  "
       if globalParameters["DebugKernel"]:
         s += "%sunsigned int *debugBuffer;\n" % t
-      solutionArgs = self.getArgList(solution["ProblemType"], True, False, False)
+      solutionArgs = self.getArgList(solution["ProblemType"], False, True, False, False)
       for arg in solutionArgs:
         if arg[0] == "TensileHalf":
           s += "%s%s %s[2];\n" % (t, arg[0], arg[1])
@@ -679,14 +679,20 @@ class SolutionWriter:
 
   ########################################
   # get solution arguments
-  def getArgList(self, problemType, includeData, includeEvents, includeStream):
+  # includeData adds launch-time info including data pointers and solution index
+  def getArgList(self, problemType, includeSolutionInfo, includeData, includeEvents, includeStream):
     self.strideList = []
     self.sizeList = []
     argList = []
 
+    #if includeSolutionInfo:
+    #  argList.append(("const char *", "kernelName2"))
+    #  argList.append(("const unsigned char *", "kernelCoba"))
+
     # data ptrs
     if includeData:
       typeName = problemType["DataType"].toCpp()
+      #argList.append(("const SolutionInfo_%s &"%problemType, "solution"))
       if self.language == "HIP":
         argList.append(("%s *"%typeName, "dataC"))
         argList.append(("const %s *"%typeName, "dataA"))
@@ -743,7 +749,7 @@ class SolutionWriter:
     solutionName = self.getSolutionName(solution)
     s += "%s%s %s(\n" % (t, self.statusName, solutionName)
     t += "    "
-    argList = self.getArgList(solution["ProblemType"], True, True, True)
+    argList = self.getArgList(solution["ProblemType"], True, True, True, True)
     for i in range(0, len(argList)):
       argString = "%s %s" % argList[i]
       s += "%s%s%s" % (t, argString, ",\n" if i < len(argList)-1 else ")" )
