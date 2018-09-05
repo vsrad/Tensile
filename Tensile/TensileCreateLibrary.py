@@ -302,7 +302,7 @@ def writeSolutionsAndKernels(outputPath, problemTypes, solutions, kernels, kerne
           "Solutions", solutionFileName+".cpp"), "w")
       solutionSourceFile.write(CHeader)
     solutionSourceFile.write( \
-        solutionWriter.getSourceFileString(solution, kernelsWithBuildErrs))
+        solutionWriter.getProblemSourceString(solution["ProblemType"], solution, kernelsWithBuildErrs))
     if not globalParameters["MergeFiles"]:
       solutionSourceFile.close()
 
