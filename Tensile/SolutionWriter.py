@@ -693,7 +693,8 @@ class SolutionWriter:
     self.sizeList = []
     argList = []
 
-    #if includeSolutionInfo:
+    if includeSolutionInfo:
+      argList.append(("SolutionLock *", "solutionLock"))
     #  argList.append(("const char *", "kernelName2"))
     #  argList.append(("const unsigned char *", "kernelCoba"))
 

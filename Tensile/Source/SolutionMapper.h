@@ -19,6 +19,8 @@
 * CTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 *******************************************************************************/
 
+#pragma once
+
 #include <limits>
 
 #define DEBUG_SM 0
@@ -27,30 +29,47 @@
 // Efficiently map problems to exact or best solution
 // Supports efficient searching and various algorithms to find
 // a 'best match' from the available solutions
-template <class ProblemParmsType, typename SolutionInfoType>
+// This provides mappings for a single device type
+template <class ProblemParmsType>
 class SolutionMapper {
   // Problem to Solution mapping:
   typedef std::pair<const ProblemParmsType, int>  PtoS;
 
   enum Algo {PickNoneAlgo= -1, RandomAlgo= -2, RatioDistanceAlgo= -3, EuclideanDistanceAlgo= -4, ManhattanDistanceAlgo= -5};
+public:
+  // Runtime information for the solution:
+  //   - const pointer to the info including function pointers, name, and assertion requirements
+  //   - runtime information including status of the necessary code object(s) in memory
+  struct SolutionRuntime {
+    SolutionRuntime() : _info(nullptr) {};
+
+    const SolutionInfo *_info;
+    SolutionLock _lock;
+    bool isValid() const { return _info != nullptr; };
+  };
 
 public:
-  SolutionMapper(const SolutionInfoType *solutionTable, size_t numSolutions,
+  SolutionMapper(const SolutionInfo *solutionTable, size_t numSolutions,
                  const PtoS *embeddedExactTable, size_t numExacts,
                  const ProblemProperties *props)
-     : _solutionTable(solutionTable), _numSolutions(numSolutions), _props(props), _findAlg(EuclideanDistanceAlgo)
+     : _numSolutions(numSolutions), _props(props), _findAlg(EuclideanDistanceAlgo)
   {
+    _solutionTable = new SolutionRuntime[numSolutions];
+
+    for (size_t i=0; i<numSolutions; i++) {
+      _solutionTable[i]._info = &solutionTable[i];
+    }
+
     for (size_t i=0; i<numExacts; i++) {
       auto &p = embeddedExactTable[i].first;  //problem
-      auto si = embeddedExactTable[i].second; //solutionIndex
-      auto const &solution = solutionTable[si];
+      auto solutionIdx = embeddedExactTable[i].second;
+      auto const &solution = solutionTable[solutionIdx];
 
-      if (AssertionProperties(p,props).validForSolution(solution.assertions)) {
+      if (AssertionProperties(p,props).validForSolution(solution._assertions)) {
         _exactVector.push_back(embeddedExactTable[i]);
-        _map.insert({p, si});
+        _exactMap.insert({p, solutionIdx});
       } else {
         // TODO - ideally these should never make it into the exact table in the first place,
-        // need to check in python land
         if (DEBUG_SM)
           std::cout << "warning: removing bogus exact problem (does not meet assertion requirements for solution)\n";
       }
@@ -83,8 +102,8 @@ public:
   // Returns integer solutionIdx if exact match is found else -1
   int findExactMatch(const ProblemParmsType &p) const
   {
-    auto fiter = _map.find(p);
-    if (fiter != _map.end()) {
+    auto fiter = _exactMap.find(p);
+    if (fiter != _exactMap.end()) {
       return fiter->second;
     } else {
       return -1;
@@ -102,8 +121,8 @@ public:
 
     for (auto iter = _exactVector.begin(); iter != _exactVector.end(); iter++) {
       auto tableP = iter->first;
-      auto solution = getSolution(iter->second);
-      if (pa.validForSolution(solution.assertions)) {
+      auto solutionInfo= getSolution(iter->second)._info;
+      if (pa.validForSolution(solutionInfo->_assertions)) {
         double distance = distanceF(p, tableP);
         if (DEBUG_SM & 0x2)
           iter->first.print(std::cout);
@@ -149,43 +168,68 @@ public:
     return -1;
   }
 
-private:
-  const SolutionInfoType getSolution(int solutionIdx) const { return _solutionTable[solutionIdx]; };
+  // For the specified matrix dimensions, find a best-fit GEMM kernel
+  // This routine does perform any auto-tuning or benchmarking
+  int findAlgorithmStatic(const ProblemParmsType &p)
+  {
+    std::lock_guard<std::mutex> lockGuard(_cachedMutex);
+    auto fiter = _cachedLookups.find(p);
+    if (fiter != _cachedLookups.end()) {
+      if (DEBUG_SM)
+        std::cout << "findAlgorithmStatic hit in cache, " << fiter->second << "\n";
+      return fiter->second;
+
+    } else {
+      // Less frequently come here, this is only first time problem size is seen.
+      int solutionIdx = findExactMatch(p);
+      if (solutionIdx == -1) {
+        solutionIdx = findNearestMatchWithAlg (p);
+        if (DEBUG_SM)
+          std::cout << "findAlgorithmStatic picked nearest-match solutionIdx=" << solutionIdx << "\n";
+      } else {
+        if (DEBUG_SM)
+          std::cout << "findAlgorithmStatic picked exact solutionIdx=" << solutionIdx << "\n";
+      }
+
+      // Save problem->solutionIdx mapping so future lookups are fast:
+      _cachedLookups.insert({p, solutionIdx});
+
+      return solutionIdx;
+    }
+  }
+
+
+  const SolutionRuntime &getSolution(int solutionIdx) const { return _solutionTable[solutionIdx]; };
 
 private:
-  const SolutionInfoType  *_solutionTable;
-  size_t                   _numSolutions;
+  SolutionRuntime         *_solutionTable;
+  size_t                      _numSolutions;
 
   const ProblemProperties *_props;
 
   // Two different structures supporting mapping from problems to solutions:
   // Map for fast exact lookups and a vector for fast walking
-  std::map<const ProblemParmsType, int> _map;
+  std::map<const ProblemParmsType, int> _exactMap;
   std::vector<PtoS>                     _exactVector;
+
+  std::mutex                            _cachedMutex;
+  std::map<const ProblemParmsType, int> _cachedLookups;
 
   int                    _findAlg;
 };
 
-
-// For the specified matrix dimensions, find a best-fit GEMM kernel
-// This routine does perform any auto-tuning or benchmarking
-template <class ProblemParmsType,typename SolutionInfoType>
-int find_algorithm_static(
-    const ProblemParmsType &p,
-    const SolutionMapper<ProblemParmsType, SolutionInfoType> &smapper)
+#if 0
+// Maps from device to appropriate solution
+class GlobalSolutionMapper
 {
-  int solutionIdx = smapper.findExactMatch(p);
-  //
-  if (solutionIdx == -1) {
-    //solutionIdx = smapper.findNearestMatch (p, RatioDistance<decltype(p)>());
-    solutionIdx = smapper.findNearestMatchWithAlg (p);
-    if (DEBUG_SM)
-      std::cout << "find_algorithm_static picked best-fit solutionIdx=" << solutionIdx << "\n";
-  } else {
-    if (DEBUG_SM)
-      std::cout << "find_algorithm_static picked exact solutionIdx=" << solutionIdx << "\n";
-  }
+  GlobalSolutionMapper()  {
+  };
+
+  private:
+  std::vector <SolutionMapper*>
+};
+#endif
 
 
-  return solutionIdx;
-}
+
+

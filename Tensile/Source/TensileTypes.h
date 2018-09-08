@@ -303,13 +303,4 @@ struct AssertionProperties {
 };
 
 
-// solution info
-template <typename F>
-struct SolutionInfo {
-  F                       functionPtr;
-  const char *            name;
-  AssertionProperties     assertions;
-};
-
-
 #endif

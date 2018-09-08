@@ -624,11 +624,11 @@ def writeClientParameters(forBenchmark, solutions, problemSizes, stepName, \
     h += "float solutionPerf[numProblems][maxNumSolutions]; // milliseconds\n"
     h += "\n"
 
-    h += "static const SolutionInfo_%s solutions[maxNumSolutions] = {\n" % (problemType)
+    h += "static const SolutionInfo solutions[maxNumSolutions] = {\n"
     for i in range(0, len(solutions)):
       solution = solutions[i]
       solutionName = solutionWriter.getSolutionName(solution)
-      h += "  {%s, \"%s\", {%d, %d, %d} }" % \
+      h += "  {(void*)%s, \"%s\", {%d, %d, %d} }" % \
         (solutionName, solutionName,
           solution["AssertSummationElementMultiple"],
           solution["AssertFree0ElementMultiple"],
@@ -749,6 +749,7 @@ def writeClientParameters(forBenchmark, solutions, problemSizes, stepName, \
     h += "template<typename DataType, class SolutionInfoType>\n"
     h += "TensileStatus generatedCallToSolution(\n"
     h += "    const SolutionInfoType &solution,\n"
+    h += "    SolutionLock *solutionLock,\n"
     h += "    const unsigned int *sizes,\n"
     h += "    const unsigned int *minStrides,\n"
     h += "    DataType alpha,\n"
@@ -814,17 +815,18 @@ def writeClientParameters(forBenchmark, solutions, problemSizes, stepName, \
       if i != 0: h += ", "
       h += "size%s" % (globalParameters["IndexChars"][i])
     h += ");\n"
-    h += "  if (!AssertionProperties(problem,&props).validForSolution(solution.assertions))\n"
+    h += "  if (!AssertionProperties(problem,&props).validForSolution(solution._assertions))\n"
     h += "    return tensileStatusAssertFailure;  // failed solution requirements\n"
     h += "\n"
 
     h += "  // call solution function\n"
-    h += "  auto f = solution.functionPtr;\n"
+    h += "  TensileSolutionPointer_%s f = reinterpret_cast<TensileSolutionPointer_%s> (solution._functionPtr);\n" \
+            % (problemType, problemType)
     if globalParameters["RuntimeLanguage"] == "OCL":
-      h += "  return f( static_cast<cl_mem>(deviceC), static_cast<cl_mem>(deviceA), static_cast<cl_mem>(deviceB),\n"
+      h += "  return f(solutionLock, static_cast<cl_mem>(deviceC), static_cast<cl_mem>(deviceA), static_cast<cl_mem>(deviceB),\n"
     else:
       typeName = dataTypes[0].toCpp()
-      h += "  return f( static_cast<%s *>(deviceC), static_cast<%s *>(deviceA), static_cast<%s *>(deviceB),\n" \
+      h += "  return f(solutionLock, static_cast<%s *>(deviceC), static_cast<%s *>(deviceA), static_cast<%s *>(deviceB),\n" \
           % (typeName, typeName, typeName)
     h += "      alpha,\n"
     if problemType["UseBeta"]:

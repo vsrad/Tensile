@@ -133,6 +133,9 @@ unsigned int globalFastestIdx = 0;
 double fastestGFlops = 0.0;
 unsigned int fastestIdx = 0;
 
+
+SolutionLock *solutionLocks;
+
 #if Tensile_RUNTIME_LANGUAGE_OCL
 /*******************************************************************************
 * Given a finished/synced OpenCL event
@@ -881,7 +884,7 @@ bool benchmarkAllSolutionsForSize(
       tensileStatusCheck(status);
 
       // enqueue device solution
-      callStatus = generatedCallToSolution( solutions[solutionIdx] , sizes, minStrides, alpha, beta );
+      callStatus = generatedCallToSolution( solutions[solutionIdx], &solutionLocks[solutionIdx], sizes, minStrides, alpha, beta );
 
       if (callStatus == tensileStatusSuccess) {
         // copy data back to host
@@ -958,10 +961,10 @@ bool benchmarkAllSolutionsForSize(
       unsigned long long syncFanSpeed = 0;
       for (unsigned int enqIdx = 0; enqIdx < numEnqueuesPerSync; enqIdx++) {
 #if Tensile_RUNTIME_LANGUAGE_OCL
-        TensileStatus status = generatedCallToSolution( solutions[solutionIdx] , sizes, minStrides, alpha, beta,
+        TensileStatus status = generatedCallToSolution( solutions[solutionIdx], &solutionLocks[solutionIdx], sizes, minStrides, alpha, beta,
             0, NULL, &l_outputEvent[syncIdx][enqIdx] );
 #else
-        TensileStatus status = generatedCallToSolution( solutions[solutionIdx], sizes, minStrides, alpha, beta,
+        TensileStatus status = generatedCallToSolution( solutions[solutionIdx], &solutionLocks[solutionIdx], sizes, minStrides, alpha, beta,
             numEnqueuesPerSync, &l_eventStart[syncIdx][enqIdx],
             &l_eventStop[syncIdx][enqIdx] );
 #endif
@@ -1076,7 +1079,7 @@ bool benchmarkAllSolutionsForSize(
           << gflops*perfScaling << ", "
           << std::setw(10) << std::fixed << std::setprecision(3)
           << gflops << ", "
-          << solutions[solutionIdx].name << (newFastest ? "*" : " ") << ", "
+          << solutions[solutionIdx]._name << (newFastest ? "*" : " ") << ", "
           << std::setw(9) << std::fixed << std::setprecision(3)
           << timeNs * TensileTimer::reciprical_million << ", ";
       if (numElementsToValidate) {
@@ -1149,7 +1152,7 @@ bool benchmarkProblemSizes(
   std::cout << std::endl;
   std::cout << "Solutions: " << std::endl;
   for (unsigned int sIdx = 0; sIdx < numSolutions; sIdx++) {
-    std::cout << "(" << sIdx << ") " << solutions[sIdx].name << std::endl;
+    std::cout << "(" << sIdx << ") " << solutions[sIdx]._name << std::endl;
   }
   //std::cout << "ResultsFileName: " << resultsFileName << std::endl;
   file.open(resultsFileName);
@@ -1159,7 +1162,7 @@ bool benchmarkProblemSizes(
   }
   file << ", TotalFlops";
   for ( unsigned int s = 0; s < numSolutions; s++) {
-    file << ", " << solutions[s].name;
+    file << ", " << solutions[s]._name;
   }
   file << std::endl;
 
