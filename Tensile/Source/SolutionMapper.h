@@ -30,10 +30,10 @@
 // Supports efficient searching and various algorithms to find
 // a 'best match' from the available solutions
 // This provides mappings for a single device type
-template <class ProblemParmsType>
+template <class ProblemDimsType, class ProblemKeyType>
 class SolutionMapper {
   // Problem to Solution mapping:
-  typedef std::pair<const ProblemParmsType, int>  PtoS;
+  typedef std::pair<const ProblemKeyType, int>  PtoS;
 
   enum Algo {PickNoneAlgo= -1, RandomAlgo= -2, RatioDistanceAlgo= -3, EuclideanDistanceAlgo= -4, ManhattanDistanceAlgo= -5};
 public:
@@ -100,10 +100,12 @@ public:
   };
 
   // Returns integer solutionIdx if exact match is found else -1
-  int findExactMatch(const ProblemParmsType &p) const
+  int findExactMatch(const AssertionProperties  &pa,
+                     const ProblemKeyType &pkey) const
   {
-    auto fiter = _exactMap.find(p);
-    if (fiter != _exactMap.end()) {
+    auto fiter = _exactMap.find(pkey);
+    if (fiter != _exactMap.end() &&
+        pa.validForSolution(getSolution(fiter->second)._info->_assertions)) {
       return fiter->second;
     } else {
       return -1;
@@ -112,9 +114,10 @@ public:
 
   // Iterates through all known exact matching and finds the 'closest' match.
   template <class DistanceFunction>
-  int findNearestMatch(const ProblemParmsType &p, DistanceFunction distanceF) const
+  int findNearestMatch(const AssertionProperties &pa,
+                       const ProblemKeyType &pkey,
+                       DistanceFunction distanceF) const
   {
-    AssertionProperties pa(p,_props);
 
     auto bestIter = _exactVector.end();
     double bestDistance = std::numeric_limits<double>::max();
@@ -123,7 +126,7 @@ public:
       auto tableP = iter->first;
       auto solutionInfo= getSolution(iter->second)._info;
       if (pa.validForSolution(solutionInfo->_assertions)) {
-        double distance = distanceF(p, tableP);
+        double distance = distanceF(pkey, tableP);
         if (DEBUG_SM & 0x2)
           iter->first.print(std::cout);
         if (distance < bestDistance) {
@@ -143,7 +146,7 @@ public:
       return -1; // if no solutions in the table
   };
 
-  int findNearestMatchWithAlg(const ProblemParmsType &p) const
+  int findNearestMatchWithAlg(const AssertionProperties &pa, const ProblemKeyType &pkey) const
   {
     if (_findAlg >= 0) {
       if (_findAlg < _numSolutions) {
@@ -154,14 +157,14 @@ public:
       case PickNoneAlgo: // Fall through to range logic
         return -1;
       case RandomAlgo:
-        return findNearestMatch (p, RandomDistance<decltype(p)>());
+        return findNearestMatch (pa, pkey, RandomDistance<decltype(pkey)>());
       case EuclideanDistanceAlgo:
-        return findNearestMatch (p, EuclideanDistance<decltype(p)>());
+        return findNearestMatch (pa, pkey, EuclideanDistance<decltype(pkey)>());
       case ManhattanDistanceAlgo:
-        return findNearestMatch (p, ManhattanDistance<decltype(p)>());
+        return findNearestMatch (pa, pkey, ManhattanDistance<decltype(pkey)>());
       case RatioDistanceAlgo:
       default:
-        return findNearestMatch (p, RatioDistance<decltype(p)>());
+        return findNearestMatch (pa, pkey, RatioDistance<decltype(pkey)>());
         break;
     }
 
@@ -170,10 +173,16 @@ public:
 
   // For the specified matrix dimensions, find a best-fit GEMM kernel
   // This routine does perform any auto-tuning or benchmarking
-  int findAlgorithmStatic(const ProblemParmsType &p)
+  int findAlgorithmStatic(const ProblemDimsType &pdims)
   {
+    ProblemKeyType pkey(pdims);
+
+    // Assertions that we can make based on the problem dims,
+    // for example summation is some int multiple or macro-tile bounds are <32bits
+    AssertionProperties pa(pdims,_props);
+
     std::lock_guard<std::mutex> lockGuard(_cachedMutex);
-    auto fiter = _cachedLookups.find(p);
+    auto fiter = _cachedLookups.find(pkey);
     if (fiter != _cachedLookups.end()) {
       if (DEBUG_SM)
         std::cout << "findAlgorithmStatic hit in cache, " << fiter->second << "\n";
@@ -181,9 +190,9 @@ public:
 
     } else {
       // Less frequently come here, this is only first time problem size is seen.
-      int solutionIdx = findExactMatch(p);
+      int solutionIdx = findExactMatch(pa, pkey);
       if (solutionIdx == -1) {
-        solutionIdx = findNearestMatchWithAlg (p);
+        solutionIdx = findNearestMatchWithAlg (pa, pkey);
         if (DEBUG_SM)
           std::cout << "findAlgorithmStatic picked nearest-match solutionIdx=" << solutionIdx << "\n";
       } else {
@@ -192,7 +201,7 @@ public:
       }
 
       // Save problem->solutionIdx mapping so future lookups are fast:
-      _cachedLookups.insert({p, solutionIdx});
+      _cachedLookups.insert({pkey, solutionIdx});
 
       return solutionIdx;
     }
@@ -209,11 +218,11 @@ private:
 
   // Two different structures supporting mapping from problems to solutions:
   // Map for fast exact lookups and a vector for fast walking
-  std::map<const ProblemParmsType, int> _exactMap;
+  std::map<const ProblemKeyType, int> _exactMap;
   std::vector<PtoS>                     _exactVector;
 
   std::mutex                            _cachedMutex;
-  std::map<const ProblemParmsType, int> _cachedLookups;
+  std::map<const ProblemKeyType, int> _cachedLookups;
 
   int                    _findAlg;
 };

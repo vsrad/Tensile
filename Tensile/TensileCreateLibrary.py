@@ -371,15 +371,15 @@ def writeLogic(outputPath, logicData, solutionWriter ):
 
 
     numSizes = problemType["TotalIndices"];
-    h += "typedef ProblemSizes<%u> ProblemSizes_%s;\n" % (numSizes,problemType)
-    h += "typedef ProblemSizes<%u> ProblemSizes_%s;\n" % (numSizes,problemType)
-    h += "typedef SolutionMapper<ProblemSizes_%s> SolutionMapper_%s;\n" % (problemType, problemType)
-    if 0:
-      lastStrideC = problemType["NumIndicesC"]
-      lastStrideA = len(problemType["IndexAssignmentsA"])
-      lastStrideB = len(problemType["IndexAssignmentsB"])
-      h += "typedef ProblemParms<%u, %u, %u, %u> ProblemSizes_%s;\n" % \
-            (lastStrideA, lastStrideB, lastStrideC, numSizes, problemType)
+    firstStride = 0 if problemType["UseInitialStrides"] else 1
+    lastStrideA = len(problemType["IndexAssignmentsA"])
+    lastStrideB = len(problemType["IndexAssignmentsB"])
+    lastStrideC = problemType["NumIndicesC"]
+    h += "typedef ProblemKey<%u> ProblemKey_%s;\n" % (numSizes,problemType)
+    h += "typedef ProblemDims<%u,%u,%u,%u,%u> ProblemDims_%s;\n" \
+        % (numSizes, firstStride, lastStrideA, lastStrideB, lastStrideC, problemType)
+    h += "typedef SolutionMapper<ProblemDims_%s, ProblemKey_%s> SolutionMapper_%s;\n" \
+            % (problemType, problemType, problemType)
 
     # declare tensileGetSolutionPointer_ProblemType
     h += "\n// get solution pointer\n"
@@ -681,7 +681,7 @@ def writeSolutionAndExactTable(schedProbName, problemType, \
 
   # Write the exact problems here
   s += "// table of exact problem dims and selected solutionIdx\n"
-  s += "static const std::pair<const ProblemSizes_%s, int> embeddedExactTable_%s[] = {\n" % (problemType,schedProbName)
+  s += "static const std::pair<const ProblemKey_%s, int> embeddedExactTable_%s[] = {\n" % (problemType,schedProbName)
   for ruleIdx in range(0, len(exactLogic)):
     rule = exactLogic[ruleIdx]
     problemSize = rule[0]
@@ -717,13 +717,26 @@ def writeExactLogic(schedProbName, problemType, indexOrder,
                     solutionNames, ptr):
   s = ""
   indent = "  "
-  s += "  ProblemSizes_%s p(" % problemType
+  s += "  ProblemDims_%s pdims(" % problemType
+  indexChars = globalParameters["IndexChars"]
+  firstStride = 0 if problemType["UseInitialStrides"] else 1
+  lastStrideC = problemType["NumIndicesC"]
+  lastStrideA = len(problemType["IndexAssignmentsA"])
+  lastStrideB = len(problemType["IndexAssignmentsB"])
+  for i in range(firstStride,lastStrideC):
+    if i != firstStride: s += ", "
+    s += "strideC%u%s" % (i, indexChars[i])
+  for i in range(firstStride,lastStrideA):
+    s += ", strideA%u%s" % (i, \
+        indexChars[problemType["IndexAssignmentsA"][i]])
+  for i in range(firstStride,lastStrideB):
+    s += ", strideB%u%s" % (i, \
+        indexChars[problemType["IndexAssignmentsB"][i]])
   for i in range(0,len(indexOrder)):
-    if i != 0: s += ", "
-    s += "size%s" % globalParameters["IndexChars"][i]
+    s += ", size%s" % indexChars[i]
   s += ");\n"
 
-  s += "  int solutionIdx = solutionMapper_%s.findAlgorithmStatic(p);\n" \
+  s += "  int solutionIdx = solutionMapper_%s.findAlgorithmStatic(pdims);\n" \
          % (schedProbName)
   s +=   "  if (solutionIdx != -1) {\n"
   if ptr:
