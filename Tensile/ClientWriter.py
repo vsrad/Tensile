@@ -801,13 +801,13 @@ def writeClientParameters(forBenchmark, solutions, problemSizes, stepName, \
 
     # function call
     h += "  // Check assertions,\n"
-    numSizes = problemType["TotalIndices"];
     firstStride = 0 if problemType["UseInitialStrides"] else 1
     lastStrideC = problemType["NumIndicesC"]
     lastStrideA = len(problemType["IndexAssignmentsA"])
     lastStrideB = len(problemType["IndexAssignmentsB"])
+    numSizes = problemType["TotalIndices"];
     h += "  typedef ProblemDims<%u,%u,%u,%u,%u> ProblemDims_%s;\n" \
-        % (numSizes, firstStride, lastStrideA, lastStrideB, lastStrideC, problemType)
+        % (firstStride, lastStrideC, lastStrideA, lastStrideB, numSizes, problemType)
     # TODO - this should be initialized somewhere once?
     h += "static const ProblemProperties props( "
     h += listToInitializer(problemType["IndicesFree"]) + ", "

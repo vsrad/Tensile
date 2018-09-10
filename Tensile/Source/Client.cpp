@@ -26,6 +26,8 @@
 #include <iostream>
 #include <iomanip>
 
+
+
 /*******************************************************************************
  * main
  ******************************************************************************/
@@ -33,6 +35,10 @@ int main( int argc, char *argv[] ) {
   if (sizeof(size_t) != 8) {
     std::cout << "WARNING: Executable not 64-bit." << std::endl;
   }
+
+#if Tensile_CLIENT_BENCHMARK
+  solutionLocks = new SolutionLock[maxNumSolutions];
+#endif
 
   // parse command line parameters
   parseCommandLineParameters(argc, argv);

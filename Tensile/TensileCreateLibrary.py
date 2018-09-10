@@ -377,7 +377,7 @@ def writeLogic(outputPath, logicData, solutionWriter ):
     lastStrideC = problemType["NumIndicesC"]
     h += "typedef ProblemKey<%u> ProblemKey_%s;\n" % (numSizes,problemType)
     h += "typedef ProblemDims<%u,%u,%u,%u,%u> ProblemDims_%s;\n" \
-        % (numSizes, firstStride, lastStrideA, lastStrideB, lastStrideC, problemType)
+        % (firstStride, lastStrideC, lastStrideA, lastStrideB, numSizes, problemType)
     h += "typedef SolutionMapper<ProblemDims_%s, ProblemKey_%s> SolutionMapper_%s;\n" \
             % (problemType, problemType, problemType)
 

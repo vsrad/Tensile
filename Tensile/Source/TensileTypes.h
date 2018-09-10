@@ -80,7 +80,7 @@ TensileStatus tensileTeardown();
 // -  stores all dimensions of the problems (sizes and strides)
 // TensileCreateLibrary.cpp will create a typedef for each specific problem, ie
 // ProblemDims_Cijk_Ailk_Bljk_SB.
-template <int NumSizes, int FirstStride, int LastStrideA, int LastStrideB, int LastStrideC>
+template <int FirstStride, int LastStrideC, int LastStrideA, int LastStrideB, int NumSizes>
 class ProblemDims {
 public:
   using SizeType = unsigned int;
@@ -122,13 +122,11 @@ public:
 private:
   template<SizeType I, typename T>
   void init (T v) {
-    printf("dim tail: %d <- %u\n", NumSizes-I, v);
     _dims[NumSizes-I] = v;
   }
 
   template<SizeType I, typename T, typename... Ts>
   void init (T v, Ts... args ) {
-    printf("dim recurse: %d <- %u\n", NumSizes-I, v);
     _dims[NumSizes-I] = v;
     init<I-1> (args...);
   }
@@ -157,8 +155,8 @@ public:
     init<NumSizes-1>(args...);
   }
 
-	template <int NumDimSizes, int FirstStride, int LastStrideA, int LastStrideB, int LastStrideC>
-  ProblemKey(const ProblemDims<NumDimSizes, FirstStride, LastStrideA, LastStrideB, LastStrideC> &pdims) {
+	template <int FirstStride, int LastStrideC, int LastStrideA, int LastStrideB, int NumDimSizes>
+  ProblemKey(const ProblemDims<FirstStride, LastStrideC, LastStrideA, LastStrideB, NumDimSizes> &pdims) {
     for (int i=0; i<NumSizes; i++) {
       _sizes[i] = pdims.sizes(i);
     }
@@ -210,13 +208,11 @@ public:
 private:
   template<int I>
   void init (SizeType v) {
-    printf("key tail: %d <- %u\n", NumSizes-I, v);
     _sizes[NumSizes-I-1] = v;
   }
 
   template<int I, typename... Ts>
   void init (SizeType v, Ts... args ) {
-    printf("key recurse: %d <- %u\n", NumSizes-I, v);
     _sizes[NumSizes-I-1] = v;
     init<I-1> (args...);
   }
