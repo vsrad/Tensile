@@ -25,6 +25,8 @@
 
 #define DEBUG_SM 0
 
+class SolutionInfo;
+
 // SolutionMapper:
 // Efficiently map problems to exact or best solution
 // Supports efficient searching and various algorithms to find

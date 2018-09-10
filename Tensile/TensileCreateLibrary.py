@@ -337,12 +337,12 @@ def writeLogic(outputPath, logicData, solutionWriter ):
   h = ""
   h += "#pragma once\n"
   h += "#include \"TensileTypes.h\"\n"
+  h += "#include \"SolutionHelper.h\"\n"
   h += "#include \"SolutionMapper.h\"\n"
 
   # TensileInternal.h
   ih = ""
   ih += "#include \"Tensile.h\"\n"
-  ih += "#include \"SolutionHelper.h\"\n"
 
   # Tensile.cpp
   s = ""
@@ -472,7 +472,7 @@ def writeLogic(outputPath, logicData, solutionWriter ):
                                       solutionNamesForSchedule, True)
       if rangeLogic != None:
         rangeLogicStr = writeRangeLogicRec(0, indexOrder, rangeLogic, \
-            solutionsForSchedule, solutionNamesForSchedule, problemType, True)
+            solutionsForSchedule, solutionNamesForSchedule, schedProbName, problemType, True)
       else:
         rangeLogicStr = "  return SolutionMapper_%s::SolutionRuntime();  // no solution\n" % (problemType)
       s += "  /* exact mappings */\n"
@@ -495,7 +495,7 @@ def writeLogic(outputPath, logicData, solutionWriter ):
                                       solutionNamesForSchedule, False)
       if rangeLogic != None:
         rangeLogicStr = writeRangeLogicRec(0, indexOrder, rangeLogic, \
-            solutionsForSchedule, solutionNamesForSchedule, problemType, False)
+            solutionsForSchedule, solutionNamesForSchedule, schedProbName, problemType, False)
       else:
         rangeLogicStr = "  return NULL; // none\n"
       s += "  /* exact mappings */\n"
@@ -752,7 +752,7 @@ def writeExactLogic(schedProbName, problemType, indexOrder,
 # Write Range Logic Recursive
 ################################################################################
 def writeRangeLogicRec(depth, indexOrder, rangeLogic, \
-    solutionsForSchedule, solutionNames, problemType, ptr):
+    solutionsForSchedule, solutionNames, schedProbName, problemType, ptr):
   indexChars = globalParameters["IndexChars"]
   indent = "  "
   indent += "  "*depth
@@ -767,7 +767,8 @@ def writeRangeLogicRec(depth, indexOrder, rangeLogic, \
       solution = solutionsForSchedule[solutionIdx]
       solutionName = solutionNames[solutionIdx]
       if ptr:
-        returnValue = solutionName
+        returnValue = "solutionMapper_%s.getSolution(%d); // %s" \
+            % (schedProbName,solutionIdx,solutionName)
       else:
         returnValue = "\"%s\"" % solutionName
 
@@ -786,7 +787,7 @@ def writeRangeLogicRec(depth, indexOrder, rangeLogic, \
       else:
         s += "%s{\n" % (indent)
       s += writeRangeLogicRec(depth+1, indexOrder, rule[1], solutionsForSchedule, solutionNames, \
-          problemType, ptr)
+          schedProbName, problemType, ptr)
       s += "%s}\n" % (indent)
   return s
 
