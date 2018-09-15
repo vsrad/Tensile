@@ -73,16 +73,12 @@ class KernelWriter:
     kStr += self.allocateResources(kernel)
 
     if kernel["ProblemType"]["TLUA"]:
-      # TODO - enable more aggressive path
-      #guaranteeeNoPartialA = kernel["AssertFree0ElementMultiple"]%kernel["GlobalLoadVectorWidthA"]==0
-      guaranteeeNoPartialA = kernel["GlobalLoadVectorWidthA"]==1
+      guaranteeeNoPartialA = kernel["AssertFree0ElementMultiple"]%kernel["GlobalLoadVectorWidthA"]==0
     else:
       guaranteeeNoPartialA = True
 
     if kernel["ProblemType"]["TLUB"]:
-      # TODO - enable more aggressive path
-      #guaranteeeNoPartialB = kernel["AssertFree1ElementMultiple"]%kernel["GlobalLoadVectorWidthB"]==0
-      guaranteeeNoPartialB = kernel["GlobalLoadVectorWidthB"]==1
+      guaranteeeNoPartialB = kernel["AssertFree1ElementMultiple"]%kernel["GlobalLoadVectorWidthB"]==0
     else:
       guaranteeeNoPartialB = True
 
@@ -682,12 +678,8 @@ class KernelWriter:
       # Shift Vector Components
       ####################################
       if kernel["EdgeType"] == "ShiftPtr":
-
-        # noPartial means each component in the vector loads is always valid.  In this case we
+        # guaranteeeNoPartial means each component in the vector loads is always valid.  In this case we
         # don't need the awkward unshift code
-        # TODO : the unshift code is complex and currently appears broken.  Long-term want to use
-        # the Assert*ElementMultiple>glvw code as often as possible, or use buffer-load-x1
-        # in cases where it can't be used.  Then can remove this path.
 
         # shift vector components d0
         if not guaranteeeNoPartialA and self.readTileDimVectorA:
