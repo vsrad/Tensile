@@ -431,6 +431,7 @@ def writeLogic(outputPath, logicData, solutionWriter ):
     s += listToInitializer(problemType["IndicesSummation"]) + ", "
     s += listToInitializer(problemType["IndicesBatch"])
     s += ");\n"
+    s += "static DeviceSolutionMapper deviceSolutionMapper_%s;\n " % (problemType)
 
 
     ########################################
@@ -454,7 +455,7 @@ def writeLogic(outputPath, logicData, solutionWriter ):
 
       s += "\n\n"
       schedProbName = "%s_%s" % (scheduleName, problemType)
-      s += writeSolutionAndExactTable(schedProbName, problemType, \
+      s += writeSolutionAndExactTable(scheduleName, deviceNames, schedProbName, problemType, \
               solutionsForSchedule, solutionNamesForSchedule, exactLogic)
 
 
@@ -660,7 +661,7 @@ def writeLogic(outputPath, logicData, solutionWriter ):
   internalHeaderFile.close()
 
 
-def writeSolutionAndExactTable(schedProbName, problemType, \
+def writeSolutionAndExactTable(scheduleName, deviceNames, schedProbName, problemType, \
                                solutionsForSchedule, solutionNames, exactLogic):
   s = ""
   s += "// solution table\n"
@@ -700,9 +701,12 @@ def writeSolutionAndExactTable(schedProbName, problemType, \
   s += "};\n\n"
 
   # Create a solution mapper and init with the table above:
-  s += "static SolutionMapper_%s\n" % (problemType)
-  s +=  "  solutionMapper_%s(solutionTable_%s, %u, embeddedExactTable_%s, %u, &problemProperties_%s);\n" \
-          % (schedProbName, schedProbName, len(solutionsForSchedule), schedProbName, len(exactLogic), problemType)
+  s += "static SolutionMapper_%s solutionMapper_%s(\n" % (problemType, schedProbName)
+  s += "  \"%s\", {%s},\n" \
+          % (schedProbName, ', '.join('"{0}"'.format(w) for w in deviceNames))
+  s += "  &deviceSolutionMapper_%s,\n" % (problemType)
+  s += "  solutionTable_%s, %u, embeddedExactTable_%s, %u, &problemProperties_%s);\n" \
+          % (schedProbName, len(solutionsForSchedule), schedProbName, len(exactLogic), problemType)
   return s
 
 

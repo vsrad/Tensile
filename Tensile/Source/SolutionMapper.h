@@ -26,18 +26,56 @@
 #define DEBUG_SM 0
 
 class SolutionInfo;
+class SolutionMapperBase;
 
-// SolutionMapper:
-// Efficiently map problems to exact or best solution
-// Supports efficient searching and various algorithms to find
-// a 'best match' from the available solutions
-// This provides mappings for a single device type
-template <class ProblemDimsType, class ProblemKeyType>
-class SolutionMapper {
-  // Problem to Solution mapping:
-  typedef std::pair<const ProblemKeyType, int>  PtoS;
+//--------------------
+// Maps from deviceId to appropriate solution
+//
+// One of these per problem type.
+// TODO - move to SolutionMapper.cpp
+class DeviceSolutionMapper
+{
+public:
+  DeviceSolutionMapper()  {
+    int numDevices;
+    hipGetDeviceCount(&numDevices);
+    _mapper.resize(numDevices);
+    for (int i=0; i<numDevices; i++) {
+      _mapper[i] = nullptr;
+    }
+  };
 
-  enum Algo {PickNoneAlgo= -1, RandomAlgo= -2, RatioDistanceAlgo= -3, EuclideanDistanceAlgo= -4, ManhattanDistanceAlgo= -5};
+  int addMapper(const std::string &mapperName, SolutionMapperBase *mapper)
+  {
+    int matches = 0;
+
+    // walk through each device and if name matches then
+    for (int i=0; i<_mapper.size(); i++) {
+      hipDeviceProp_t deviceProperties;
+      hipGetDeviceProperties(&deviceProperties, i);
+      std::string deviceName(deviceProperties.name);
+      if (deviceName == mapperName) {
+        matches++;
+        _mapper[i] = mapper;
+      }
+    }
+    return matches;
+  }
+
+  SolutionMapperBase *mapper()
+  {
+    int deviceId;
+    hipGetDevice(&deviceId);
+    return _mapper[deviceId];
+  }
+
+private:
+  // Index is deviceId, points at the mapper to use for that device.
+  std::vector <SolutionMapperBase*> _mapper;;
+};
+
+
+class SolutionMapperBase {
 public:
   // Runtime information for the solution:
   //   - const pointer to the info including function pointers, name, and assertion requirements
@@ -49,13 +87,39 @@ public:
     SolutionLock _lock;
     bool isValid() const { return _info != nullptr; };
   };
+protected:
+  enum Algo {PickNoneAlgo= -1, RandomAlgo= -2, RatioDistanceAlgo= -3, EuclideanDistanceAlgo= -4, ManhattanDistanceAlgo= -5};
+};
+
+
+// SolutionMapper:
+// Efficiently map problems to exact or best solution
+// Supports efficient searching and various algorithms to find
+// a 'best match' from the available solutions
+// This provides mappings for a single device type
+template <class ProblemDimsType, class ProblemKeyType>
+class SolutionMapper : public SolutionMapperBase {
+  // Problem to Solution mapping:
+  typedef std::pair<const ProblemKeyType, int>  PtoS;
 
 public:
-  SolutionMapper(const SolutionInfo *solutionTable, size_t numSolutions,
+  SolutionMapper(const std::string &name, const std::vector<std::string> &deviceNames,
+                 DeviceSolutionMapper *deviceSolutionMapper,
+                 const SolutionInfo *solutionTable, size_t numSolutions,
                  const PtoS *embeddedExactTable, size_t numExacts,
                  const ProblemProperties *props)
-     : _numSolutions(numSolutions), _props(props), _findAlg(EuclideanDistanceAlgo)
+     : _name(name), _props(props), _numSolutions(numSolutions), _findAlg(EuclideanDistanceAlgo)
   {
+    int used=0; // how many devices are using this solution mapper:
+    for (auto iter=deviceNames.begin(); iter!=deviceNames.end(); iter++) {
+      used += deviceSolutionMapper->addMapper(*iter, this);
+    }
+
+    if (used==0) {
+      //printf ("info: skipping mapper init - no devices of type: %s found\n", name.c_str());
+      return;
+    }
+
     _solutionTable = new SolutionRuntime[numSolutions];
 
     for (size_t i=0; i<numSolutions; i++) {
@@ -63,18 +127,12 @@ public:
     }
 
     for (size_t i=0; i<numExacts; i++) {
-      auto &p = embeddedExactTable[i].first;  //problem
+      auto &pkey = embeddedExactTable[i].first;
       auto solutionIdx = embeddedExactTable[i].second;
       auto const &solution = solutionTable[solutionIdx];
 
-      if (AssertionProperties(p,props).validForSolution(solution._assertions)) {
-        _exactVector.push_back(embeddedExactTable[i]);
-        _exactMap.insert({p, solutionIdx});
-      } else {
-        // TODO - ideally these should never make it into the exact table in the first place,
-        if (DEBUG_SM)
-          std::cout << "warning: removing bogus exact problem (does not meet assertion requirements for solution)\n";
-      }
+      _exactVector.push_back(embeddedExactTable[i]);
+      _exactMap.insert({pkey, solutionIdx});
     }
 
     const char *alg = std::getenv("TENSILE_FIND_ALGO"); //See Algo or >=0 specified specific solution
@@ -209,37 +267,29 @@ public:
     }
   }
 
-
   const SolutionRuntime &getSolution(int solutionIdx) const { return _solutionTable[solutionIdx]; };
+  const std::string name() const { return _name; };
 
 private:
-  SolutionRuntime         *_solutionTable;
-  size_t                      _numSolutions;
-
+  const std::string        _name;
   const ProblemProperties *_props;
+
+  SolutionRuntime *   _solutionTable;
+  size_t              _numSolutions;
 
   // Two different structures supporting mapping from problems to solutions:
   // Map for fast exact lookups and a vector for fast walking
   std::map<const ProblemKeyType, int> _exactMap;
-  std::vector<PtoS>                     _exactVector;
+  std::vector<PtoS>                   _exactVector;
 
-  std::mutex                            _cachedMutex;
+  std::mutex                          _cachedMutex;
   std::map<const ProblemKeyType, int> _cachedLookups;
 
-  int                    _findAlg;
+  // Algorithm that should be used to find nearest match - See Algo enum
+  int                                 _findAlg;
 };
 
-#if 0
-// Maps from device to appropriate solution
-class GlobalSolutionMapper
-{
-  GlobalSolutionMapper()  {
-  };
 
-  private:
-  std::vector <SolutionMapper*>
-};
-#endif
 
 
 
