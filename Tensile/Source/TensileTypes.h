@@ -343,10 +343,10 @@ struct AssertionProperties {
     else if ((free0Size & 0x1) == 0) _free0ElementMultiple=2;
 
     auto free1Size = p.sizes(props->free1Idx());
-    _free0ElementMultiple = 1; // problem free1 element multiple
-    if ((free1Size & 0x7) == 0) _free0ElementMultiple=8;
-    else if ((free1Size & 0x3) == 0) _free0ElementMultiple=4;
-    else if ((free1Size & 0x1) == 0) _free0ElementMultiple=2;
+    _free1ElementMultiple = 1; // problem free1 element multiple
+    if ((free1Size & 0x7) == 0) _free1ElementMultiple=8;
+    else if ((free1Size & 0x3) == 0) _free1ElementMultiple=4;
+    else if ((free1Size & 0x1) == 0) _free1ElementMultiple=2;
 
     bool allBelow1 = true;
     bool allBelow32 = true;
