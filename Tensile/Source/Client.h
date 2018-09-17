@@ -634,9 +634,6 @@ bool callLibrary(
   avgFanSpeed /= numSyncsPerBenchmark;
 
   float perfScaling = 1.f;
-#if Tensile_RUNTIME_LANGUAGE_HIP
-//  perfScaling = 1.f * expectedClockRate / avgCoreClock; // if clock speeds drop
-#endif
   double gflops = solutionIsValid ? perfScaling * totalFlops / timeNs : 0;
 
   bool newFastest = false;
@@ -1056,9 +1053,6 @@ bool benchmarkAllSolutionsForSize(
     avgFanSpeed /= numSyncsPerBenchmark;
 
     float perfScaling = 1.f;
-#if Tensile_RUNTIME_LANGUAGE_HIP
-//    perfScaling = 1.f * expectedClockRate / avgCoreClock; // if clock speeds drop
-#endif
     double gflops = solutionIsValid ? perfScaling * totalFlops / timeNs : 0;
     //std::cout << gflops << " gflops = " << totalFlops << " flops / " << timeNs << " ns" << std::endl;
     bool newFastest = false;
@@ -1174,7 +1168,7 @@ bool benchmarkProblemSizes(
   if (!numElementsToValidate) {
     std::cout << "Pre-compiling " << numSolutions << " OpenCL kernels";
     for (unsigned int sIdx = 0; sIdx < numSolutions; sIdx++) {
-      generatedCallToSolution( solutions[sIdx], problemSizes[0], minStrides, alpha, beta );
+      generatedCallToSolution( solutions[sIdx], &solutionLocks[sIdx], problemSizes[0], minStrides, alpha, beta );
       status = clFinish(stream); tensileStatusCheck(status);
       tensileStatusCheck(status);
       std::cout << ".";

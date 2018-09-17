@@ -22,6 +22,10 @@
 #ifndef TENSILE_H
 #define TENSILE_H
 #include <stdio.h>
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <math.h>
 
 // OpenCL
 #if Tensile_RUNTIME_LANGUAGE_OCL
@@ -233,7 +237,7 @@ struct RatioDistance {
   {
     double distance = 1.0;
     for (int i=0; i<p1.numSizes(); i++) {
-      distance += fabs(log(double(p1.sizes(i))/double(p2.sizes(i))));
+      distance += ::fabs(::log(double(p1.sizes(i))/double(p2.sizes(i))));
     }
     return distance;
   }
@@ -245,7 +249,7 @@ struct ManhattanDistance {
   {
     double distance = 0;
     for (int i=0; i<p1.numSizes(); i++) {
-      distance += fabs(double(p1.sizes(i)) - double(p2.sizes(i)));
+      distance += ::fabs(double(p1.sizes(i)) - double(p2.sizes(i)));
     }
     return distance;
   }

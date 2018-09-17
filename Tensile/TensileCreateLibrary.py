@@ -274,6 +274,7 @@ def writeSolutionsAndKernels(outputPath, problemTypes, solutions, kernels, kerne
     if globalParameters["CodeFromFiles"]:
       solutionHeaderFile.write("#include <unistd.h>\n")
 
+
   # Write a solution pointer typedef for each problemType:
   h = ""
   for problemType in problemTypes:
