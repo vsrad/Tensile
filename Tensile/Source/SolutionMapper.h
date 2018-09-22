@@ -33,10 +33,10 @@ class SolutionMapperBase;
 //
 // One of these per problem type.
 // TODO - move to SolutionMapper.cpp
-class DeviceSolutionMapper
+class MasterSolutionMapper
 {
 public:
-  DeviceSolutionMapper()  {
+  MasterSolutionMapper()  {
     int numDevices;
     hipGetDeviceCount(&numDevices);
     _mapper.resize(numDevices);
@@ -111,7 +111,7 @@ class SolutionMapper : public SolutionMapperBase {
 
 public:
   SolutionMapper(const std::string &name, const std::vector<std::string> &deviceNames,
-                 DeviceSolutionMapper *deviceSolutionMapper,
+                 MasterSolutionMapper *masterSolutionMapper,
                  const SolutionInfo *solutionTable, size_t numSolutions,
                  const PtoS *embeddedExactTable, size_t numExacts,
                  const ProblemProperties *props)
@@ -119,7 +119,7 @@ public:
   {
     int used=0; // how many devices are using this solution mapper:
     for (auto iter=deviceNames.begin(); iter!=deviceNames.end(); iter++) {
-      used += deviceSolutionMapper->addMapper(*iter, this);
+      used += masterSolutionMapper->addMapper(*iter, this);
     }
 
     if (DEBUG_SM) {

@@ -427,16 +427,28 @@ def writeLogic(outputPath, logicData, solutionWriter ):
     ########################################
     # Per-problem constants here:
     # These are common for all schedules and thus do not include schedule name (vega,hip,etc)
+    s += "\n"
+    s += "/*******************************************************************************\n"
+    s += "* Per-Problem Functions for %s\n" % problemType
+    s += "*******************************************************************************/\n"
+
+    s += "// Problem properties include the index assignments for free, summation, batch:\n"
     s += "static const ProblemProperties problemProperties_%s( " % problemType
     s += listToInitializer(problemType["IndicesFree"]) + ", "
     s += listToInitializer(problemType["IndicesSummation"]) + ", "
     s += listToInitializer(problemType["IndicesBatch"])
     s += ");\n"
-    s += "static DeviceSolutionMapper deviceSolutionMapper_%s;\n " % (problemType)
+
+    s += "\n"
+    s += "// Master solution mapper is the entry point for problem->solution mapping\n"
+    s += "// There is one master solution mapper per problem type\n"
+    s += "// The master solution mapper contains pointers to the solution mappers for each device\n"
+    s += "static MasterSolutionMapper masterSolutionMapper_%s;\n " % (problemType)
 
 
     ########################################
     # implement per-Schedule functions in source
+    s += "\n"
     s += "/*******************************************************************************\n * Per-Schedule Functions\n *******************************************************************************/"
     for scheduleTuple in logicData[problemType]:
 
@@ -459,11 +471,12 @@ def writeLogic(outputPath, logicData, solutionWriter ):
       s += writeSolutionAndExactTable(scheduleName, deviceNames, schedProbName, problemType, \
               solutionsForSchedule, solutionNamesForSchedule, exactLogic)
 
+
     # Per-problem function here:
     # function tensileGetSolutionPointer_ProblemType
     del schedProbName
     del scheduleName
-    s += "\n// problem size -> solution logic\n"
+    s += "\n// problem dims -> solution logic\n"
     s += "SolutionMapper_%s::SolutionRuntime\n" % (problemType)
     s += "tensileGetSolutionPointer_%s(\n" % (problemType)
     for i in range(0, len(argListSizes)):
@@ -557,7 +570,9 @@ def writeLogic(outputPath, logicData, solutionWriter ):
 def writeSolutionAndExactTable(scheduleName, deviceNames, schedProbName, problemType, \
                                solutionsForSchedule, solutionNames, exactLogic):
   s = ""
-  s += "// solution table\n"
+  s += "namespace { // Start schedule '%s'\n" % scheduleName
+
+  s += "// solution table - function, name, assertion requirements\n"
   s += "static const SolutionInfo solutionTable_%s[] = {\n" % (schedProbName)
   for i in range(0, len(solutionsForSchedule)):
     solution = solutionsForSchedule[i]
@@ -595,12 +610,17 @@ def writeSolutionAndExactTable(scheduleName, deviceNames, schedProbName, problem
   s += "};\n\n"
 
   # Create a solution mapper and init with the table above:
+  s += "// The solution master constructor here adds device to the master solution mapper\n"
+  s += "// The entrypoint to find a solution for this problem is through the master solution master\n"
   s += "static SolutionMapper_%s solutionMapper_%s(\n" % (problemType, schedProbName)
-  s += "  \"%s\", {%s},\n" \
-          % (schedProbName, ', '.join('"{0}"'.format(w) for w in deviceNames))
-  s += "  &deviceSolutionMapper_%s,\n" % (problemType)
-  s += "  solutionTable_%s, %u, embeddedExactTable_%s, %u, &problemProperties_%s);\n" \
-          % (schedProbName, len(solutionsForSchedule), schedProbName, len(exactLogic), problemType)
+  s += "  \"%s\", // schedule+problem name\n" % (schedProbName) 
+  s += "  {%s}, // Device names\n" % (', '.join('"{0}"'.format(w) for w in deviceNames))
+  s += "  &masterSolutionMapper_%s, // add to this master solution mapper\n" % (problemType)
+  s += "  solutionTable_%s, %u,\n" % (schedProbName, len(solutionsForSchedule))
+  s += "  embeddedExactTable_%s, %u,\n" % (schedProbName, len(exactLogic))
+  s += "  &problemProperties_%s);\n" % (problemType)
+
+  s += "} // end anonymous namespace\n" 
   return s
 
 
@@ -634,15 +654,15 @@ def writeExactLogic(problemType, indexOrder,
     s += ", size%s" % indexChars[i]
   s += ");\n"
 
-  s += "  auto solutionMapper = reinterpret_cast<SolutionMapper_%s *> (deviceSolutionMapper_%s.mapper());\n"  \
+  s += "  auto masterSolutionMapper = reinterpret_cast<SolutionMapper_%s *> (masterSolutionMapper_%s.mapper());\n"  \
       % (problemType, problemType)
-  s += "  int solutionIdx = solutionMapper->findAlgorithmStatic(pdims,%d);\n" \
+  s += "  int solutionIdx = masterSolutionMapper->findAlgorithmStatic(pdims,%d);\n" \
          % (not globalParameters["ExpandRanges"])
   s +=   "  if (solutionIdx != -1) {\n"
   if ptr:
-    s += "    return solutionMapper->getSolution(solutionIdx);\n"
+    s += "    return masterSolutionMapper->getSolution(solutionIdx);\n"
   else:
-    s += "    return solutionMapper->getSolution(solutionIdx)._info->_name;\n"
+    s += "    return masterSolutionMapper->getSolution(solutionIdx)._info->_name;\n"
   s +=   "  }\n"
 
   return s
