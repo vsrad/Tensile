@@ -26,7 +26,6 @@
 // Set to non-zero to debug the solution mapper
 #define DEBUG_SM 0
 
-class SolutionInfo;
 class SolutionMapperBase;
 
 //--------------------
@@ -59,7 +58,7 @@ public:
         printf("compare #%d:%s == %s\n", i, deviceName.c_str(), mapperName.c_str());
       }
       if ((deviceName == mapperName) ||
-          (mapperName == "fallback" && _mapper[i] == nullptr)) {
+          ((mapperName == "fallback" || mapperName == "Device 0000") && _mapper[i] == nullptr)) {
         matches++;
         _mapper[i] = mapper;
           if (DEBUG_SM) {
