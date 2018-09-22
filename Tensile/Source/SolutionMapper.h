@@ -251,7 +251,7 @@ public:
 
   // For the specified matrix dimensions, find a best-fit GEMM kernel
   // This routine does perform any auto-tuning or benchmarking
-  int findAlgorithmStatic(const ProblemDimsType &pdims, bool exactOnly)
+  int findAlgorithmStatic(const ProblemDimsType &pdims)
   {
     ProblemKeyType pkey(pdims);
 
@@ -269,7 +269,7 @@ public:
     } else {
       // Less frequently come here, this is only first time problem size is seen.
       int solutionIdx = findExactMatch(pa, pkey);
-      if (solutionIdx == -1 and !exactOnly) {
+      if (solutionIdx == -1) {
         solutionIdx = findNearestMatchWithAlg (pa, pkey);
         if (DEBUG_SM)
           std::cout << "findAlgorithmStatic picked nearest-match solutionIdx=" << solutionIdx << "\n";

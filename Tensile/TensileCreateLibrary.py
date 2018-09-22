@@ -656,8 +656,7 @@ def writeExactLogic(problemType, indexOrder,
 
   s += "  auto masterSolutionMapper = reinterpret_cast<SolutionMapper_%s *> (masterSolutionMapper_%s.mapper());\n"  \
       % (problemType, problemType)
-  s += "  int solutionIdx = masterSolutionMapper->findAlgorithmStatic(pdims,%d);\n" \
-         % (not globalParameters["ExpandRanges"])
+  s += "  int solutionIdx = masterSolutionMapper->findAlgorithmStatic(pdims);\n"
   s +=   "  if (solutionIdx != -1) {\n"
   if ptr:
     s += "    return masterSolutionMapper->getSolution(solutionIdx);\n"
