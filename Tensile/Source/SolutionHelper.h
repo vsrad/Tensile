@@ -89,7 +89,13 @@ struct SolutionInfo {
   // Use void* since these are all same type and can use same type for all w/o templates
   void *                  _functionPtr;
   const char *            _name;
-  AssertionProperties     _assertions;
+
+  // These are requirements that the problem dims must meet in order to use this solution
+  // For example so kernels may be optimized with the assumption that the summation is even
+  // thus allowing faster code but the solution only works if the requirement is met.
+  // The structure here captures those requirements - they will be checked before
+  // launching the kernel
+  AssertionProperties     _assertionRequirements;
 };
 
 

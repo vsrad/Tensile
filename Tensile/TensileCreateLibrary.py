@@ -495,7 +495,7 @@ def writeLogic(outputPath, logicData, solutionWriter ):
     s += "\n}\n"
 
     # function tensileGetSolutionName_Schedule_ProblemType
-    s += "\n// get solution name for problem size\n"
+    s += "\n// get solution name for problem dims\n"
     s += "const char * tensileGetSolutionName_%s(\n" \
         % (problemType)
     for i in range(0, len(argListSizes)):

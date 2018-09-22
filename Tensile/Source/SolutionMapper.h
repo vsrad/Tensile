@@ -179,7 +179,7 @@ public:
     //if (fiter != _exactMap.end() &&
     //    pa.validForSolution(getSolution(fiter->second)._info->_assertions)) {
     if (fiter != _exactMap.end()) {
-      if (pa.validForSolution(getSolution(fiter->second)._info->_assertions)) {
+      if (pa.validForSolution(getSolution(fiter->second)._info->_assertionRequirements)) {
         return fiter->second;
       } else {
         //printf ("Possible exact match %d failed assertion requirements\n", fiter->second);
@@ -203,7 +203,7 @@ public:
     for (auto iter = _exactVector.begin(); iter != _exactVector.end(); iter++) {
       auto tableP = iter->first;
       auto solutionInfo= getSolution(iter->second)._info;
-      if (pa.validForSolution(solutionInfo->_assertions)) {
+      if (pa.validForSolution(solutionInfo->_assertionRequirements)) {
         double distance = distanceF(pkey, tableP);
         if (DEBUG_SM & 0x2)
           iter->first.print(std::cout);
