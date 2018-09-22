@@ -857,7 +857,7 @@ def writeClientParameters(forBenchmark, solutions, problemSizes, stepName, \
           indexChars[problemType["IndexAssignmentsB"][i]])
     for i in range(0, problemType["TotalIndices"]):
       h += "      size%s,\n" % indexChars[i]
-    h += "      stream,\n"
+    h +=   "      stream,\n"
     if globalParameters["RuntimeLanguage"] == "OCL":
        h += "      numEvents, event_wait_list, outputEvent ); // events\n"
     else:
@@ -917,7 +917,7 @@ def writeClientParameters(forBenchmark, solutions, problemSizes, stepName, \
           h += "    hipEvent_t *startEvent,\n"
           h += "    hipEvent_t *stopEvent ) {\n\n"
 
-        h += "  unsigned int functionIdxForDataType = functionInfo[functionIdx][4];\n"
+        h += "    unsigned int functionIdxForDataType = functionInfo[functionIdx][4];\n"
 
         for functionIdx in range(0, len(functionsForDataType)):
           function = functionsForDataType[functionIdx]
@@ -993,13 +993,12 @@ def writeClientParameters(forBenchmark, solutions, problemSizes, stepName, \
             h += "        strideB%u%s,\n" % (i, \
                 indexChars[problemType["IndexAssignmentsB"][i]])
           for i in range(0, problemType["TotalIndices"]):
-            h += "        size%s,\n" % indexChars[i]
-          h += "        stream"
+            h += "        size%s%s\n" % (indexChars[i], "," if i != problemType["TotalIndices"]-1 else "")
           if enqueue:
             if globalParameters["RuntimeLanguage"] == "OCL":
-               h += ",\n        numEvents, event_wait_list, outputEvent"
+               h += ", stream, numEvents, event_wait_list, outputEvent"
             else:
-               h += ",\n        numEvents, startEvent, stopEvent"
+               h += ", stream, numEvents, startEvent, stopEvent"
           h += ");\n"
 
         if len(functionsForDataType) > 1:
