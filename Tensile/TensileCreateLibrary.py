@@ -384,7 +384,7 @@ def writeLogic(outputPath, logicData, solutionWriter ):
 
     # declare tensileGetSolutionPointer_ProblemType
     h += "\n// get solution pointer\n"
-    h += "SolutionMapper_%s::SolutionRuntime\n" % (problemType)
+    h += "SolutionMapper_%s::SolutionRuntime *\n" % (problemType)
     h += "tensileGetSolutionPointer_%s(\n" % (problemType)
     for i in range(0, len(argListSizes)):
       h += "    %s %s%s" \
@@ -477,7 +477,7 @@ def writeLogic(outputPath, logicData, solutionWriter ):
     del schedProbName
     del scheduleName
     s += "\n// problem dims -> solution logic\n"
-    s += "SolutionMapper_%s::SolutionRuntime\n" % (problemType)
+    s += "SolutionMapper_%s::SolutionRuntime *\n" % (problemType)
     s += "tensileGetSolutionPointer_%s(\n" % (problemType)
     for i in range(0, len(argListSizes)):
       s += "    %s %s%s" \
@@ -491,7 +491,7 @@ def writeLogic(outputPath, logicData, solutionWriter ):
       print "** warning: ignored ranges in logic file, these should have been expanded with ExpandRanges=1 during Tensile phase 3"
     s += "  /* exact mappings */\n"
     s += exactLogicStr
-    s += "\n  return SolutionMapper_%s::SolutionRuntime();  // no solution found, return invalid\n" % (problemType)
+    s += "\n  return nullptr;\n"
     s += "\n}\n"
 
     # function tensileGetSolutionName_Schedule_ProblemType
@@ -523,21 +523,21 @@ def writeLogic(outputPath, logicData, solutionWriter ):
       s += "    %s %s%s" \
           % (argListData[i][0], argListData[i][1], \
           ",\n" if i < len(argListData)-1 else ") {\n")
-    s += "    auto s = tensileGetSolutionPointer_%s(\n" % (problemType)
+    s += "    auto solution = tensileGetSolutionPointer_%s(\n" % (problemType)
     for i in range(0, len(argListSizes)):
       s += "        %s%s" \
           % (argListSizes[i][1], ", " if i < len(argListSizes)-1 else ");")
       s += "\n"
-    s += "    if ( s.isValid() ) {\n"
-    s += "      TensileSolutionPointer_%s f = reinterpret_cast<TensileSolutionPointer_%s> (s._info->_functionPtr);\n" \
+    s += "    if (solution) {\n"
+    s += "      TensileSolutionPointer_%s f = reinterpret_cast<TensileSolutionPointer_%s> (solution->_info->_functionPtr);\n" \
       % (problemType, problemType)
-    s += "      auto solutionLock = &s._lock;\n"
+    s += "      auto solutionLock = &solution->_lock;\n"
     s += "      return f("
     for i in range(0, len(argListAll)):
       s += "%s%s" \
           % (argListAll[i][1], ", " if i < len(argListAll)-1 else ");\n")
     s += "    } else {\n"
-    s += "      printf(\"solution not valid, returning fail\\n\");"
+    #s += "      printf(\"solution not valid, returning fail\\n\");"
     s += "      return tensileStatusFailure; // no solution found\n"
     s += "    }\n"
     s += "}\n"
@@ -654,14 +654,14 @@ def writeExactLogic(problemType, indexOrder,
     s += ", size%s" % indexChars[i]
   s += ");\n"
 
-  s += "  auto masterSolutionMapper = reinterpret_cast<SolutionMapper_%s *> (masterSolutionMapper_%s.mapper());\n"  \
+  s += "  auto solutionMapper = reinterpret_cast<SolutionMapper_%s *> (masterSolutionMapper_%s.mapper());\n"  \
       % (problemType, problemType)
-  s += "  int solutionIdx = masterSolutionMapper->findAlgorithmStatic(pdims);\n"
+  s += "  int solutionIdx = solutionMapper->findAlgorithmStatic(pdims);\n"
   s +=   "  if (solutionIdx != -1) {\n"
   if ptr:
-    s += "    return masterSolutionMapper->getSolution(solutionIdx);\n"
+    s += "    return solutionMapper->getSolution(solutionIdx);\n"
   else:
-    s += "    return masterSolutionMapper->getSolution(solutionIdx)._info->_name;\n"
+    s += "    return solutionMapper->getSolution(solutionIdx)->_info->_name;\n"
   s +=   "  }\n"
 
   return s

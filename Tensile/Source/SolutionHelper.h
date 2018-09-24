@@ -45,11 +45,14 @@ typedef hipFunction_t DeviceFunctionType;
 
 // Locks and tracker for kernel loading status
 struct SolutionLock {
-  SolutionLock() : _deviceFunctions(0) {};
+  SolutionLock() : _deviceFunctions(nullptr)
+  {
+  };
 
   SolutionLock(const SolutionLock &other) {
     _deviceFunctions.store(other._deviceFunctions.load());
   };
+
 
   std::atomic<DeviceFunctionType*> _deviceFunctions;
   std::mutex _initFunctionsMutex;
@@ -64,7 +67,6 @@ __declspec(thread) extern KernelMap kernelMap;
 #else
 extern thread_local KernelMap kernelMap;
 #endif
-
 
 /*******************************************************************************
  * Compile/Load Kernels
@@ -97,6 +99,5 @@ struct SolutionInfo {
   // launching the kernel
   AssertionProperties     _assertionRequirements;
 };
-
 
 #endif

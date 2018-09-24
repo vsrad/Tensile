@@ -24,9 +24,27 @@
 #include <limits>
 
 // Set to non-zero to debug the solution mapper
+// 0x1 = informational debug
+// 0x2 = deeper debug including distance winners
+// 0x4 = print all distance calcs
+// DEBUG_SM sets compile-time default - also can use TENSILE_DB env var with same encoding
 #define DEBUG_SM 0
 
-class SolutionMapperBase;
+class SolutionMapperBase {
+public:
+  // Runtime information for the solution:
+  //   - const pointer to the info including function pointers, name, and assertion requirements
+  //   - runtime information including status of the necessary code object(s) in memory
+  struct SolutionRuntime {
+    SolutionRuntime() : _info(nullptr) {};
+
+    const SolutionInfo *_info;
+    SolutionLock _lock;
+    bool isValid() const { return _info != nullptr; };
+  };
+protected:
+  enum Algo {PickNoneAlgo= -1, RandomAlgo= -2, RatioDistanceAlgo= -3, EuclideanDistanceAlgo= -4, ManhattanDistanceAlgo= -5};
+};
 
 //--------------------
 // Maps from deviceId to appropriate solution
@@ -54,16 +72,12 @@ public:
       hipDeviceProp_t deviceProperties;
       hipGetDeviceProperties(&deviceProperties, i);
       std::string deviceName(deviceProperties.name);
-      if (DEBUG_SM) {
-        printf("compare #%d:%s == %s\n", i, deviceName.c_str(), mapperName.c_str());
-      }
+      //  printf("compare #%d:%s == %s\n", i, deviceName.c_str(), mapperName.c_str());
       if ((deviceName == mapperName) ||
           ((mapperName == "fallback" || mapperName == "Device 0000") && _mapper[i] == nullptr)) {
         matches++;
         _mapper[i] = mapper;
-          if (DEBUG_SM) {
-            printf ("  match->%d\n", matches);
-          }
+        //printf ("  match->%d\n", matches);
       }
     }
     return matches;
@@ -81,24 +95,6 @@ private:
   std::vector <SolutionMapperBase*> _mapper;;
 };
 
-
-class SolutionMapperBase {
-public:
-  // Runtime information for the solution:
-  //   - const pointer to the info including function pointers, name, and assertion requirements
-  //   - runtime information including status of the necessary code object(s) in memory
-  struct SolutionRuntime {
-    SolutionRuntime() : _info(nullptr) {};
-
-    const SolutionInfo *_info;
-    SolutionLock _lock;
-    bool isValid() const { return _info != nullptr; };
-  };
-protected:
-  enum Algo {PickNoneAlgo= -1, RandomAlgo= -2, RatioDistanceAlgo= -3, EuclideanDistanceAlgo= -4, ManhattanDistanceAlgo= -5};
-};
-
-
 // SolutionMapper:
 // Efficiently map problems to exact or best solution
 // Supports efficient searching and various algorithms to find
@@ -115,18 +111,19 @@ public:
                  const SolutionInfo *solutionTable, size_t numSolutions,
                  const PtoS *embeddedExactTable, size_t numExacts,
                  const ProblemProperties *props)
-     : _name(name), _props(props), _numSolutions(numSolutions), _findAlg(EuclideanDistanceAlgo)
+     :  _name(name), _props(props), _numSolutions(numSolutions),
+        _findAlg(EuclideanDistanceAlgo), _db(DEBUG_SM)
   {
     int used=0; // how many devices are using this solution mapper:
     for (auto iter=deviceNames.begin(); iter!=deviceNames.end(); iter++) {
       used += masterSolutionMapper->addMapper(*iter, this);
     }
 
-    if (DEBUG_SM) {
+    if (_db & 0x8) {
       printf ("info: mapper init - %s was used in %d devices\n", name.c_str(), used);
     }
     if (used==0) {
-      if (DEBUG_SM) {
+      if (_db & 0x8) {
         printf ("info: **skipping mapper init - no devices of type: %s found\n", name.c_str());
       }
       return;
@@ -147,11 +144,16 @@ public:
       _exactMap.insert({pkey, solutionIdx});
     }
 
-    const char *alg = std::getenv("TENSILE_FIND_ALGO"); //See Algo or >=0 specified specific solution
+    const char *db = std::getenv("TENSILE_DB");
+    if (db) {
+      _db = strtol(db,nullptr,0);
+    }
+
+    const char *alg = std::getenv("TENSILE_FIND_ALG"); // If <0 see Algo enumeration, or >=0 specified specific solution index
     if (alg) {
       _findAlg = strtol(alg,nullptr,0);
     }
-    if (DEBUG_SM & 0x1)
+    if (_db & 0x1)
       printf ("TENSILE_FIND_ALGO= %d (%s)\n", _findAlg, algoString(_findAlg));
   }
 
@@ -176,10 +178,8 @@ public:
                      const ProblemKeyType &pkey) const
   {
     auto fiter = _exactMap.find(pkey);
-    //if (fiter != _exactMap.end() &&
-    //    pa.validForSolution(getSolution(fiter->second)._info->_assertions)) {
     if (fiter != _exactMap.end()) {
-      if (pa.validForSolution(getSolution(fiter->second)._info->_assertionRequirements)) {
+      if (pa.validForSolution(getSolution(fiter->second)->_info->_assertionRequirements)) {
         return fiter->second;
       } else {
         //printf ("Possible exact match %d failed assertion requirements\n", fiter->second);
@@ -202,18 +202,25 @@ public:
 
     for (auto iter = _exactVector.begin(); iter != _exactVector.end(); iter++) {
       auto tableP = iter->first;
-      auto solutionInfo= getSolution(iter->second)._info;
+      auto solutionInfo= getSolution(iter->second)->_info;
       if (pa.validForSolution(solutionInfo->_assertionRequirements)) {
         double distance = distanceF(pkey, tableP);
-        if (DEBUG_SM & 0x2)
-          iter->first.print(std::cout);
         if (distance < bestDistance) {
           bestDistance = distance;
           bestIter = iter;
-          if (DEBUG_SM & 0x2)
-            std::cout << " distance=" << distance << " **newBest**" << "\n";
+          if (_db & 0x2) {
+            std::cerr << " solutionIdx=" << iter->second << " pdims={";
+            iter->first.print(std::cerr);
+            std::cerr << "}";
+            std::cerr << " distance=" << distance << "        <------------- newBest" << "\n";
+          }
         } else {
-          //std::cout << " distance=" << distance << "\n";
+          if (_db & 0x4) {
+            std::cerr << " solutionIdx=" << iter->second << " pdims={";
+            iter->first.print(std::cerr);
+            std::cerr << "}";
+            std::cerr << " distance=" << distance << "\n";
+          }
         }
       }
     }
@@ -262,8 +269,8 @@ public:
     std::lock_guard<std::mutex> lockGuard(_cachedMutex);
     auto fiter = _cachedLookups.find(pkey);
     if (fiter != _cachedLookups.end()) {
-      if (DEBUG_SM)
-        std::cout << "findAlgorithmStatic hit in cache, " << fiter->second << "\n";
+      if (_db & 0x1)
+        std::cerr << "findAlgorithmStatic hit in cache solutionIdx=" << fiter->second << "\n";
       return fiter->second;
 
     } else {
@@ -271,11 +278,11 @@ public:
       int solutionIdx = findExactMatch(pa, pkey);
       if (solutionIdx == -1) {
         solutionIdx = findNearestMatchWithAlg (pa, pkey);
-        if (DEBUG_SM)
-          std::cout << "findAlgorithmStatic picked nearest-match solutionIdx=" << solutionIdx << "\n";
+        if (_db & 0x1)
+          std::cerr << "findAlgorithmStatic picked nearest-match solutionIdx=" << solutionIdx << "\n";
       } else {
-        if (DEBUG_SM)
-          std::cout << "findAlgorithmStatic picked exact solutionIdx=" << solutionIdx << "\n";
+        if (_db & 0x1)
+          std::cerr << "findAlgorithmStatic picked exact solutionIdx=" << solutionIdx << "\n";
       }
 
       // Save problem->solutionIdx mapping so future lookups are fast:
@@ -287,9 +294,9 @@ public:
     }
   }
 
-  const SolutionRuntime &getSolution(int solutionIdx) const {
+  SolutionRuntime *getSolution(int solutionIdx) const {
     //printf ("getSolution for solutionIdx=%d\n", solutionIdx);
-    return _solutionTable[solutionIdx];
+    return &_solutionTable[solutionIdx];
   };
 
   const SolutionRuntime &cacheSolution(const ProblemDimsType &pdims, int solutionIdx) {
@@ -324,10 +331,7 @@ private:
 
   // Algorithm that should be used to find nearest match - See Algo enum
   int                                 _findAlg;
+
+  // Debug print control:
+  int                                 _db;
 };
-
-
-
-
-
-
