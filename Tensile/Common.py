@@ -26,6 +26,7 @@ import subprocess
 from subprocess import Popen, PIPE
 import time
 import platform
+from copy import deepcopy
 
 startTime = time.time()
 
@@ -68,7 +69,7 @@ globalParameters["ExitAfterKernelGen"] = False     # Exit after generating kerne
 globalParameters["ShowProgressBar"] = True     # if False and library client already built, then building library client will be skipped when tensile is re-run
 globalParameters["WavefrontWidth"] = 64     # if False and library client already built, then building library client will be skipped when tensile is re-run
 globalParameters["ExitOnFails"] = 1     # Exit if failures detected.
-globalParameters["CpuThreads"] = -4          # How many CPU threads to use for kernel generation.  0=no threading, <0 == nproc*abs(CpuThreads), N=min(nproc,N)
+globalParameters["CpuThreads"] = -4         # How many CPU threads to use for kernel generation.  0=no threading, <0 == nproc*abs(CpuThreads), N=min(nproc,N)
 
 ########################################
 # less common
@@ -138,6 +139,9 @@ else:
 
 # might be deprecated
 globalParameters["EnableHalf"] = False
+
+# Save a copy - since pytest doesn't re-run this initialization code and YAML files can override global settings - odd things can happen
+defaultGlobalParameters = deepcopy(globalParameters)
 
 ################################################################################
 # Enumerate Valid Solution Parameters
@@ -681,7 +685,12 @@ def tryAssembler(isaVersion, asmString):
 # can override them, those overridings happen here
 ################################################################################
 def assignGlobalParameters( config ):
+
   global globalParameters
+
+  print1("# Restoring default globalParameters")
+  for key in defaultGlobalParameters:
+    globalParameters[key] = defaultGlobalParameters[key]
 
   # Minimum Required Version
   if "MinimumRequiredVersion" in config:
@@ -726,15 +735,13 @@ def assignGlobalParameters( config ):
     if process.returncode:
       printWarning("%s exited with code %u" % (globalParameters["ROCmAgentEnumeratorPath"], process.returncode))
 
-  # Determine assembler capabilities:
-  # Try to assemble the new explicit co syntax:
+  # Determine assembler capabilities by testing short instructions sequences:
   globalParameters["AsmCaps"] = {}
   for (v) in globalParameters["SupportedISA"]:
     globalParameters["AsmCaps"][v] = {}
     isaVersion = "gfx" + "".join(map(str,v))
     asmCmd = "%s -x assembler -target amdgcn-amdhsa -mcpu=%s -" \
                % (globalParameters["AssemblerPath"], isaVersion)
-    # This doesn't work since assembler politely falls back to default with an unsupported mcpu argument:
     globalParameters["AsmCaps"][v]["SupportedIsa"] = tryAssembler(isaVersion, "")
     globalParameters["AsmCaps"][v]["HasExplicitCO"] = tryAssembler(isaVersion, "v_add_co_u32 v0,vcc,v0,v0")
     globalParameters["AsmCaps"][v]["HasDirectToLds"] = tryAssembler(isaVersion, "buffer_load_dword v40, v36, s[24:27], s28 offen offset:0 lds")
@@ -745,7 +752,6 @@ def assignGlobalParameters( config ):
       caps += " %s=%u" % (k, globalParameters["AsmCaps"][v][k])
 
     print1 ("# Asm caps for %s:%s" % (isaVersion, caps))
-
 
 
   # For ubuntu platforms, call dpkg to grep the version of hcc.  This check is platform specific, and in the future
