@@ -6271,6 +6271,9 @@ class KernelWriterAssembly(KernelWriter):
 
           elif kernel["ProblemType"]["DataType"].isSingle():
             kStr += inst("v_mul_f32", vgpr("ValuC+%u"%sumIdxV), sgpr("Alpha"), vgpr("ValuC+%u"%sumIdxV), "*= alpha" )
+
+            kStr += inst("s_mov_b32", sgpr("Alpha"), "16.0", "hack")
+            kStr += inst("v_mov_b32", vgpr("ValuC+%u"%sumIdxV), sgpr("Alpha"), "*= alpha" )
             if self.db["CheckValueC"] >= 0:
               kStr += self.assert_eq(vgpr("ValuC+%u"%sumIdxV), 0.0)
 
