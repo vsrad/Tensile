@@ -26,6 +26,8 @@ import os
 from os import path, chmod
 from os import name as osname
 from subprocess import Popen
+import Instruction
+from Instruction import Inst,LoadInst
 
 ################################################################################
 # Kernel Writer
@@ -270,9 +272,9 @@ class KernelWriter:
       if self.enable["GlobalRead"]:
         # global read
         kl.append(self.comment("global read a"))
-        kl.append(self.globalReadDo(kernel, 0, tensorParametersA))
+        kl.append(str(self.globalReadDo(kernel, 0, tensorParametersA)))
         kl.append(self.comment("global read b"))
-        kl.append(self.globalReadDo(kernel, 0, tensorParametersB))
+        kl.append(str(self.globalReadDo(kernel, 0, tensorParametersB)))
       if self.enable["GlobalReadInc"]:
         # increment global
         kl.append(self.comment("global read inc a"))
@@ -330,9 +332,15 @@ class KernelWriter:
       if self.enable["GlobalRead"]:
         # unrolled loop: global read A, B
         kl.append(self.comment("global read a"))
-        kl.append(self.globalReadDo(kernel, 1, tensorParametersA))
+        globalReadA = self.globalReadDo(kernel, 1, tensorParametersA)
+        if 0: # buffer load only
+            print "GRA="
+            globalReadA.prettyPrint()
+            #import pdb; pdb.set_trace()
+            print "cnt=", globalReadA.middle.countType(LoadInst)
+        kl.append(str(globalReadA))
         kl.append(self.comment("global read b"))
-        kl.append(self.globalReadDo(kernel, 1, tensorParametersB))
+        kl.append(str(self.globalReadDo(kernel, 1, tensorParametersB)))
 
       if self.enable["GlobalReadInc"]:
         # unrolled loop: increment global read addresses
@@ -626,9 +634,9 @@ class KernelWriter:
           kl.append(self.removeStagger(kernel, tensorParametersB))
 
         kl.append(self.comment("global read a"))
-        kl.append(self.globalReadDo(kernel, 2, tensorParametersA))
+        kl.append(str(self.globalReadDo(kernel, 2, tensorParametersA)))
         kl.append(self.comment("global read b"))
-        kl.append(self.globalReadDo(kernel, 2, tensorParametersB))
+        kl.append(str(self.globalReadDo(kernel, 2, tensorParametersB)))
       if self.enable["Wait"]:
         kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, "2wait for global read"))
       if self.enable["Sync"]:

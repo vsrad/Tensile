@@ -1,6 +1,6 @@
-
 class Module:
-  def __init__(self):
+  def __init__(self, name=""):
+    self.name = name
     self.instList = []
     self.itemList = []
 
@@ -28,6 +28,35 @@ class Module:
     instStr = formatting % (params)
     self.append("%-50s // %s" % (instStr, comment))
 
+  def prettyPrint(self,indent=""):
+    print "%s%s:"% (indent,self.name)
+    for i in self.itemList:
+      if isinstance(i, Module):
+        i.prettyPrint(indent+"  ")
+      elif isinstance(i, str):
+        print indent, '"', str(i) ,'"'
+      else: # Inst
+        print indent,"[",str(i),"]"
+
+  def countType(self,ttype):
+    count=0
+    for i in self.itemList:
+      if isinstance(i, Module):
+        count += i.countType(ttype)
+      else:
+        count += int(isinstance(i, ttype))
+    return count
+
+class StructuredModule(Module):
+  def __init__(self, name=None):
+    Module.__init__(self,name)
+    self.header = Module("header")
+    self.middle = Module("middle")
+    self.footer =  Module("footer")
+
+    self.append(self.header)
+    self.append(self.middle)
+    self.append(self.footer)
 
 class Inst:
   def __init__(self, *args):
@@ -41,10 +70,13 @@ class Inst:
     instStr = formatting % (params)
     self.text = "%-50s // %s" % (instStr, comment)
 
-
   def __str__(self):
     return self.text + '\n'
 
   def toStr(self):
     return str(self)
 
+
+class LoadInst (Inst):
+  def __init__(self,*args):
+    Inst.__init__(self,*args)
