@@ -4187,6 +4187,8 @@ class KernelWriterAssembly(KernelWriter):
     imod = Instruction.Module()
     tc = tP["tensorChar"]
 
+    imod.append(self.comment("global read inc %s"%tc))
+
     if kernel["BufferLoad"]:
       # TODO - does this handle N-dim tensors correctly?
       #if tP["isB"]:
@@ -4890,7 +4892,7 @@ class KernelWriterAssembly(KernelWriter):
 
             paramTuple = tuple(paramList)
             #comment = "Reg -> L %u_%u_%u_%u"%(para, sPara, perp, sPerp)
-            comment += " #%u"%self.localWriteDoCnt
+            #comment += " #%u"%self.localWriteDoCnt
             nonTemporal = 0
             highBits = False
             if kernel["ProblemType"]["DataType"].isHalf():
