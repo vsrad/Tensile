@@ -1,3 +1,18 @@
+
+"""
+Base class for Modules, Instructions, etc
+CodeItem is a atomic collection of or more instructions and commentsA
+"""
+class CodeItem:
+  pass
+
+  def toStr(self):
+    return str(self)
+
+  def countType(self,ttype):
+    return int(isinstance(self, ttype))
+
+
 """
 Modules contain lists of text instructions, Inst objects, or additional modules
 They can be easily converted to string that represents all items in the list
@@ -6,7 +21,7 @@ The intent is to allow the kernel writer to express the structure of the
 code (ie which instructions are a related module) so the scheduler can later
 make intelligent and legal transformations.
 """
-class Module:
+class Module(CodeItem):
   def __init__(self, name=""):
     self.name = name
     self.itemList = []
@@ -14,25 +29,43 @@ class Module:
   def __str__(self):
     return "".join([str(x) for x in self.itemList])
 
-  def toStr(self):
-    return str(self)
+  """
+  Add specified item to the list of items in the module.
+  Item MUST be a CodeItem (not a string) - can use
+  addText(...)) to add a string.
+  All additions to itemList should use this function.
 
-  def append(self, inst):
-    self.itemList.append(inst)
+  Returns item to facilitate one-line create/add patterns
+  """
+  def addCode(self, item):
+    #assert (isinstance(item, CodeItem))
+    if isinstance(item,CodeItem):
+      self.itemList.append(item)
+    elif isinstance(item,str):
+      self.addCode(TextBlock(item))
+    else:
+      assert 0, "unknown item type (%s) for Module.addCode. item=%s"%(type(item), item)
+    return item
 
-  def comment(self, comment):
-    self.itemList.append("// %s\n"%comment)
 
-  def instStr(self, *args):
-    params = args[0:len(args)-1]
-    comment = args[len(args)-1]
-    formatting = "%s"
-    if len(params) > 1:
-      formatting += " %s"
-    for i in range(0, len(params)-2):
-      formatting += ", %s"
-    instStr = formatting % (params)
-    self.append("%-50s // %s\n" % (instStr, comment))
+
+  """
+  Convenience function to format arg as a comment and add TextBlock item
+  """
+  def addComment(self, comment):
+    self.addCode(TextBlock("// %s\n"%comment))
+
+  """
+  Convenience function to construct a single Inst and add to items
+  """
+  def addInst(self, *args):
+    self.addCode(Inst(*args))
+
+  """
+  Convenience function to construct a TextBlock and add to items
+  """
+  def addText(self,text):
+    self.addCode(TextBlock(text))
 
   def prettyPrint(self,indent=""):
     print "%s%s:"% (indent,self.name)
@@ -47,6 +80,7 @@ class Module:
   """
   Count number of items with specified type in this Module
   Will recursively count occurrences in submodules
+  (Overrides CodeItem.countType)
   """
   def countType(self,ttype):
     count=0
@@ -83,18 +117,31 @@ class StructuredModule(Module):
     self.middle = Module("middle")
     self.footer =  Module("footer")
 
-    self.append(self.header)
-    self.append(self.middle)
-    self.append(self.footer)
+    self.addCode(self.header)
+    self.addCode(self.middle)
+    self.addCode(self.footer)
+
 
 """
-Inst is an instruction.
-Currently just stores text but over time may grow
+An unstructured block of text that can contain comments and instructions
 """
-class Inst:
+class TextBlock(CodeItem):
+  def __init__(self,text):
+    assert(isinstance(text, str))
+    self.text = text
+
+  def __str__(self):
+    return self.text
+
+"""
+Inst is a single instruction and is base class for other instructions.
+Currently just stores text+comment but over time may grow
+"""
+class Inst(CodeItem):
   def __init__(self, *args):
     params = args[0:len(args)-1]
     comment = args[len(args)-1]
+    assert(isinstance(comment, str))
     formatting = "%s"
     if len(params) > 1:
       formatting += " %s"
@@ -106,11 +153,6 @@ class Inst:
   def __str__(self):
     return self.text
 
-  def toStr(self):
-    return str(self)
-
-  def countType(self,ttype):
-    return int(isinstance(self, ttype))
 
 # uniq type that can be used in Module.countType
 class LoadInst (Inst):

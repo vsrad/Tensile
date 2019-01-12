@@ -99,7 +99,7 @@ class RegisterPool:
     oldSize = len(self.pool)
     if newSize > oldSize:
       for i in range(0, newSize-oldSize):
-        self.pool.append(self.Register(self.statusUnAvailable,tag))
+        self.pool.addInst(self.Register(self.statusUnAvailable,tag))
     # mark as available
     for i in range(start, start+size):
       if self.pool[i].status == self.statusUnAvailable:
@@ -4187,7 +4187,7 @@ class KernelWriterAssembly(KernelWriter):
     imod = Instruction.Module()
     tc = tP["tensorChar"]
 
-    imod.append(self.comment("global read inc %s"%tc))
+    imod.addComment("global read inc %s"%tc)
 
     if kernel["BufferLoad"]:
       # TODO - does this handle N-dim tensors correctly?
@@ -4199,24 +4199,24 @@ class KernelWriterAssembly(KernelWriter):
         incUpper = incLower + 1
         tmpS =    incLower + 2
         if prefetchIndex:
-          imod.instStr("s_sub_u32", sgpr(tmpS), sgpr("LoopCounters+%u"%self.unrollIdx), prefetchIndex, "remove pf(%u)"%prefetchIndex)
-          imod.instStr("s_cmp_eq_u32",  sgpr("StaggerUIter"), sgpr(tmpS), "Is this wrapIter? (pf)")
+          imod.addInst("s_sub_u32", sgpr(tmpS), sgpr("LoopCounters+%u"%self.unrollIdx), prefetchIndex, "remove pf(%u)"%prefetchIndex)
+          imod.addInst("s_cmp_eq_u32",  sgpr("StaggerUIter"), sgpr(tmpS), "Is this wrapIter? (pf)")
         else:
-          imod.instStr("s_cmp_eq_u32",  sgpr("LoopCounters+%u"%self.unrollIdx), \
+          imod.addInst("s_cmp_eq_u32",  sgpr("LoopCounters+%u"%self.unrollIdx), \
                     sgpr("StaggerUIter"), "Is this the wrapIter?")
         #kStr += self.assert_scc_is_1() # break at the wrap iteration
-        imod.instStr("s_cselect_b32", sgpr(incLower), sgpr("WrapU%s"%tc), sgpr("GlobalReadIncs%s"%tc), \
+        imod.addInst("s_cselect_b32", sgpr(incLower), sgpr("WrapU%s"%tc), sgpr("GlobalReadIncs%s"%tc), \
                     "incLower <- ?")
-        imod.instStr("s_and_b32", sgpr(incUpper), sgpr(incLower), 0x80000000, "test")
-        imod.instStr("s_subb_u32", sgpr(incUpper), 0, 0, "-1 or 0")
-        imod.append(self.incrementSrd(kernel, tP, sgpr(incLower), sgpr(incUpper), checkShadowLimitCopy=True))
+        imod.addInst("s_and_b32", sgpr(incUpper), sgpr(incLower), 0x80000000, "test")
+        imod.addInst("s_subb_u32", sgpr(incUpper), 0, 0, "-1 or 0")
+        imod.addText(self.incrementSrd(kernel, tP, sgpr(incLower), sgpr(incUpper), checkShadowLimitCopy=True))
         if 0 and tP["isB"] and prefetchIndex==0:
           tv = self.vgprPool.checkOut(1, "hack")
-          imod.instStr( "v_mov_b32", vgpr(tv), sgpr("LoopCounters"), "")
-          imod.append( self.assert_ne(vgpr(tv), sgpr("StaggerUIter"))) # break at the wrap iteration
+          imod.addInst( "v_mov_b32", vgpr(tv), sgpr("LoopCounters"), "")
+          imod.addText( self.assert_ne(vgpr(tv), sgpr("StaggerUIter"))) # break at the wrap iteration
           self.vgprPool.checkIn(tv)
       else:
-        imod.append( self.incrementSrd(kernel, tP, sgpr("GlobalReadIncs%s"%tc), 0))
+        imod.addText( self.incrementSrd(kernel, tP, sgpr("GlobalReadIncs%s"%tc), 0))
     else:
       loopChar = self.indexChars[ \
           kernel["ProblemType"]["IndicesSummation"][loopIdx]]
@@ -4229,13 +4229,13 @@ class KernelWriterAssembly(KernelWriter):
           for para in range(0, tP["nrc"]):
             for sPara in range(0, tP["nrcv"]/tP["nrcvpi"]):
               if self.globalReadIncsUseVgpr:
-                imod.instStr("_v_add_co_u32 ", \
+                imod.addInst("_v_add_co_u32 ", \
                     vgpr("GlobalReadAddr%s+%u+0"%(tP["tensorChar"], graIdx)), \
                     "vcc", \
                     vgpr("GlobalReadAddr%s+%u+0"%(tP["tensorChar"], graIdx)),  \
                     vgpr("GlobalReadIncs%s+%u+0"%(tP["tensorChar"], loopIdx)), \
                     "gra += inc%s%s (lower)"%(tP["tensorChar"], loopChar))
-                imod.instStr("_v_addc_co_u32", \
+                imod.addInst("_v_addc_co_u32", \
                     vgpr("GlobalReadAddr%s+%u+1"%(tP["tensorChar"], graIdx)), \
                     "vcc", \
                     vgpr("GlobalReadAddr%s+%u+1"%(tP["tensorChar"], graIdx)), \
@@ -4243,13 +4243,13 @@ class KernelWriterAssembly(KernelWriter):
                     "vcc", \
                     "gra += inc%s%s (upper)"%(tP["tensorChar"], loopChar))
               else:
-                imod.instStr("_v_add_co_u32 ", \
+                imod.addInst("_v_add_co_u32 ", \
                     vgpr("GlobalReadAddr%s+%u+0"%(tP["tensorChar"], graIdx)), \
                     "vcc", \
                     vgpr("GlobalReadAddr%s+%u+0"%(tP["tensorChar"], graIdx)),  \
                     sgpr("GlobalReadIncs%s+%u+0"%(tP["tensorChar"], loopIdx)), \
                     "gra += inc%s%s (lower)"%(tP["tensorChar"], loopChar))
-                imod.instStr("_v_addc_co_u32", \
+                imod.addInst("_v_addc_co_u32", \
                     vgpr("GlobalReadAddr%s+%u+1"%(tP["tensorChar"], graIdx)), \
                     "vcc", \
                     vgpr("GlobalReadAddr%s+%u+1"%(tP["tensorChar"], graIdx)), \
@@ -4496,7 +4496,7 @@ class KernelWriterAssembly(KernelWriter):
     if not self.do["GlobalRead%s"%tP["tensorChar"]]: return ""
     tc = tP["tensorChar"]
     imod = Instruction.StructuredModule("globalReadDo%s_%u"%(tc,mode))
-    imod.append(self.comment("global read %s")%tc)
+    imod.addComment("global read %s"%tc)
     graIdx = 0
     g2lIdx = 0
     loadWidth = tP["globalReadInstruction"].totalWidth # load width in elements?
@@ -4506,37 +4506,37 @@ class KernelWriterAssembly(KernelWriter):
     loopIdx = self.unrollIdx # TODO - does this handle multiple summation indices?
     if kernel["SuppresssNoLoadLoop"]:
       if mode==1 and tP["isA"]:
-        imod.header.instStr("s_cmp_eq_i32", \
+        imod.header.addInst("s_cmp_eq_i32", \
               sgpr("LoopCounters+%u"%loopIdx), \
               "%u"%-1, \
               "%s"%"is this the last iteration")
-        imod.header.instStr("s_cmov_b32", \
+        imod.header.addInst("s_cmov_b32", \
               sgpr("SrdA+2"), \
               0,
               "Set limit to 0 for last iteration")
-        imod.header.instStr("s_cmov_b32", \
+        imod.header.addInst("s_cmov_b32", \
               sgpr("SrdB+2"), \
               0,
               "Set limit to 0 for last iteration")
 
     if tP["isA"] and (kernel["DirectToLdsA"] or kernel["DirectToLdsB"]):
-      imod.header.append(self.comment1("before DirectToLds load, ensure prior ds_reads have finished"))
-      imod.header.append(self.syncThreads(kernel))
+      imod.header.addText(self.comment1("before DirectToLds load, ensure prior ds_reads have finished"))
+      imod.header.addText(self.syncThreads(kernel))
 
     if kernel["DirectToLds%s"%tP["tensorChar"]]:
       # DirectToLds only enabled for TLU=1 cases, where the registers are directly copied into LDS
       assert (kernel["LocalWriteUseSgpr%s"%tc])
       if kernel["ExpandPointerSwap"]:
-        imod.header.instStr("s_add_u32", "m0", sgpr("LocalWriteAddr%s"%tc), \
+        imod.header.addInst("s_add_u32", "m0", sgpr("LocalWriteAddr%s"%tc), \
                       tP["localWriteSwapByteOffset"], "m0 <- LDS write address")
       else:
-        imod.header.instStr("s_mov_b32", "m0", sgpr("LocalWriteAddr%s"%tc), "m0 <- LDS write address")
+        imod.header.addInst("s_mov_b32", "m0", sgpr("LocalWriteAddr%s"%tc), "m0 <- LDS write address")
 
 
     # sizeK % LOCAL_DEPTHU
     guardK = (mode==2)
     if guardK:
-      imod.middle.append(self.globalReadGuardK(kernel, tP))
+      imod.middle.addText(self.globalReadGuardK(kernel, tP))
       return imod
 
     # else not-guardK below:
@@ -4562,7 +4562,7 @@ class KernelWriterAssembly(KernelWriter):
             g2lIdx = i * loadWidth
             # Each load may contains a small bundle of instructions, package them together in loadModule:
             loadModule = Instruction.Module("load%u"%loopCnt)
-            imod.middle.append(loadModule)
+            imod.middle.addCode(loadModule)
 
             if kernel["BufferLoad"]:
               if graIdx==0 or not kernel["UseSgprForGRO"]:
@@ -4587,7 +4587,7 @@ class KernelWriterAssembly(KernelWriter):
 
 
                 if directToLdsLoads != 0:
-                  loadModule.instStr("s_add_u32", "m0", "m0", ldsInc, \
+                  loadModule.addInst("s_add_u32", "m0", "m0", ldsInc, \
                       "Move LDS write address to next line" )
                 directToLdsLoads+=1
                 ldsOffset += ldsInc
@@ -4595,7 +4595,7 @@ class KernelWriterAssembly(KernelWriter):
               else:
                 destVgpr="G2L%s+%u"%(tc, g2lIdx)
 
-              loadModule.append( self.chooseGlobalLoad(kernel["BufferLoad"], \
+              loadModule.addCode( self.chooseGlobalLoad(kernel["BufferLoad"], \
                         bpl, destVgpr=destVgpr, \
                         addr0=vgpr(offsetVgpr), addr1=sgpr("Srd%s"%tc, 4), \
                         soffset=soffset, offset=0, \
@@ -4605,7 +4605,7 @@ class KernelWriterAssembly(KernelWriter):
               #print "IM=", type(imod.instList[-1]), imod.instList[-1], 
             else: # not buffer load
               # load one element from address
-              loadModule.append( self.chooseGlobalLoad(False, \
+              loadModule.addCode( self.chooseGlobalLoad(False, \
                         bpl, \
                         destVgpr="G2L%s+%u"%(tc, g2lIdx), \
                         addr0=vgpr("GlobalReadAddr%s+%u"%(tc,graIdx),2), addr1="", \
@@ -4615,15 +4615,15 @@ class KernelWriterAssembly(KernelWriter):
                         comment="G -> Reg %u_%u_%u_%u"%(para, sPara, perp, sPerp )))
 
     if self.db["ConservativeWaitCnt"] & 0x1:
-        imod.footer.instStr( "s_barrier", "debug")
-        imod.footer.instStr( "s_waitcnt", "lgkmcnt(0) & vmcnt(0)")
-        imod.footer.instStr( "s_barrier", "debug")
+        imod.footer.addInst( "s_barrier", "debug")
+        imod.footer.addInst( "s_waitcnt", "lgkmcnt(0) & vmcnt(0)")
+        imod.footer.addInst( "s_barrier", "debug")
         #kStr += self.assert_lt(vgpr("Serial"), 64) # examine second wavefront
 
 
     # TODO - can remove one of these m0 restores if A and B both TLU
     if kernel["DirectToLds%s"%tP["tensorChar"]]:
-      imod.footer.instStr("s_mov_b32", "m0", \
+      imod.footer.addInst("s_mov_b32", "m0", \
           hex(kernel["LdsNumElements"] * tP["bpe"]), \
           "Restore LDS clamp at %u bytes"%(kernel["LdsNumElements"] * tP["bpe"]))
 
@@ -4838,8 +4838,7 @@ class KernelWriterAssembly(KernelWriter):
       instructionCnt = -1
       for perp in range(0, tP["nrp"]):
         instructionCnt += 1
-        localWriteCode = Instruction.Module("LocalWritee%u"%instructionCnt)
-        imod.append(localWriteCode)
+        localWriteCode = imod.addCode(Instruction.Module("LocalWritee%u"%instructionCnt))
         lwa = "LocalWriteAddr%s"%tc  # default
         if kernel["FractionalLoad"] and perp==tP["nrp"]-1:
           overhang = kernel["fractionalPerpOverhang%s"%tc]
@@ -4849,8 +4848,8 @@ class KernelWriterAssembly(KernelWriter):
 
             validWI = overhang*kernel[tP["lsc"]]/tP["glvw"]
             #print "%s: overhang=%u element validWI=%u" % (tc, overhang, validWI)
-            localWriteCode.append(self.comment1("LastPerp.  overhang=%u, mask WI>%u" % (overhang, validWI)))
-            localWriteCode.instStr("v_cndmask_b32", \
+            localWriteCode.addText(self.comment1("LastPerp.  overhang=%u, mask WI>%u" % (overhang, validWI)))
+            localWriteCode.addInst("v_cndmask_b32", \
                         vgpr(tmpLocalWriteAddr), \
                         1.0, \
                         vgpr("LocalWriteAddr%s"%tc), \
@@ -4900,7 +4899,7 @@ class KernelWriterAssembly(KernelWriter):
                 highBits = True
               if tP["glvw"]==1 and instructionCnt%2==1:
                 highBits = True
-            localWriteCode.append(LocalWriteInst( \
+            localWriteCode.addCode(LocalWriteInst( \
                 tP["localWriteInstruction"].toString(paramTuple, comment, \
                 nonTemporal, highBits),""))
 
@@ -4912,9 +4911,9 @@ class KernelWriterAssembly(KernelWriter):
     # localWriteDoCnt<=2 is prefetch if PrefetchGlobalRead:
     if 0 and tP["isB"]:
     #if 0 and self.localWriteDoCnt >= 0:
-      localWriteCode.append( "s_waitcnt lgkmcnt(0) & vmcnt(0)\n")
-      localWriteCode.instStr("s_barrier", "dump LDS" )
-      localWriteCode.append(self.bomb())
+      localWriteCode.addInst( "s_waitcnt lgkmcnt(0) & vmcnt(0)", "")
+      localWriteCode.addInst("s_barrier", "dump LDS" )
+      localWriteCode.addText(self.bomb())
 
     return imod
 
@@ -5029,8 +5028,7 @@ class KernelWriterAssembly(KernelWriter):
     #print "numReadsPerVector", numReadsPerVector
     for vIdx in range(0, numVectorsPerTile):
       for rIdx in range(0, numReadsPerVector):
-        localReadCode = Instruction.Module("LocalRead Valu%u"%valuIdx)
-        imod.append(localReadCode)
+        localReadCode = imod.addCode (Instruction.Module("LocalRead Valu%u"%valuIdx))
         paramList = []
         destVgpr = vgpr("Valu%s_X%u_I%u+%u"%(tc, bufferIdx, iui, valuIdx), blockWidth)
         paramList.append(destVgpr)
@@ -5041,12 +5039,12 @@ class KernelWriterAssembly(KernelWriter):
         paramTuple = tuple(paramList)
         comment = "L -> Reg lro=%d swapByteOffset=%u ti=%u vIdx=%u rIdx=%u oIdx=%u buffer=%u iui=%u"\
             %(tP["localReadOffset"],tP["localReadSwapByteOffset"],kernel["SubGroup%u"%tP["tensorIdx"]], vIdx, rIdx, oIdx, bufferIdx, iui)
-        localReadCode.append(LocalReadInst(instruction.toString(paramTuple, comment), ""))
+        localReadCode.addCode(LocalReadInst(instruction.toString(paramTuple, comment), ""))
         valuIdx += blockWidth
 
         # TODO - handle vector-load
         if self.db["CheckValue1%s"%tc]:
-            localReadCode.instStr("s_waitcnt lgkmcnt(0)", "CheckValue1 wait for LDS read")
+            localReadCode.addInst("s_waitcnt lgkmcnt(0)", "CheckValue1 wait for LDS read")
             if kernel["ProblemType"]["DataType"].isHalf():
               localReadCode.append(self.assert_eq(destVgpr, hex(0x3c003c00))) # packed 1s
             elif kernel["ProblemType"]["DataType"].isInt8x4() or \
@@ -7054,7 +7052,7 @@ class KernelWriterAssembly(KernelWriter):
 
   def vmwait(self, kernel, count):
     imod = Instruction.Module()
-    imod.instStr("s_waitcnt vmcnt(%u)"%count, "wait for global read")
+    imod.addInst("s_waitcnt vmcnt(%u)"%count, "vmwait for global read")
     return imod
 
 
