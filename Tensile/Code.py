@@ -1,9 +1,9 @@
 
 """
 Base class for Modules, Instructions, etc
-CodeItem is a atomic collection of or more instructions and commentsA
+Item is a atomic collection of or more instructions and commentsA
 """
-class CodeItem:
+class Item:
   pass
 
   def toStr(self):
@@ -21,7 +21,7 @@ The intent is to allow the kernel writer to express the structure of the
 code (ie which instructions are a related module) so the scheduler can later
 make intelligent and legal transformations.
 """
-class Module(CodeItem):
+class Module(Item):
   def __init__(self, name=""):
     self.name = name
     self.itemList = []
@@ -31,15 +31,15 @@ class Module(CodeItem):
 
   """
   Add specified item to the list of items in the module.
-  Item MUST be a CodeItem (not a string) - can use
+  Item MUST be a Item (not a string) - can use
   addText(...)) to add a string.
   All additions to itemList should use this function.
 
   Returns item to facilitate one-line create/add patterns
   """
   def addCode(self, item):
-    #assert (isinstance(item, CodeItem))
-    if isinstance(item,CodeItem):
+    #assert (isinstance(item, Item))
+    if isinstance(item,Item):
       self.itemList.append(item)
     elif isinstance(item,str):
       self.addCode(TextBlock(item))
@@ -80,7 +80,7 @@ class Module(CodeItem):
   """
   Count number of items with specified type in this Module
   Will recursively count occurrences in submodules
-  (Overrides CodeItem.countType)
+  (Overrides Item.countType)
   """
   def countType(self,ttype):
     count=0
@@ -125,7 +125,7 @@ class StructuredModule(Module):
 """
 An unstructured block of text that can contain comments and instructions
 """
-class TextBlock(CodeItem):
+class TextBlock(Item):
   def __init__(self,text):
     assert(isinstance(text, str))
     self.text = text
@@ -137,7 +137,7 @@ class TextBlock(CodeItem):
 Inst is a single instruction and is base class for other instructions.
 Currently just stores text+comment but over time may grow
 """
-class Inst(CodeItem):
+class Inst(Item):
   def __init__(self, *args):
     params = args[0:len(args)-1]
     comment = args[len(args)-1]
@@ -155,7 +155,7 @@ class Inst(CodeItem):
 
 
 # uniq type that can be used in Module.countType
-class LoadInst (Inst):
+class GlobalReadInst (Inst):
   def __init__(self,*args):
     Inst.__init__(self,*args)
 

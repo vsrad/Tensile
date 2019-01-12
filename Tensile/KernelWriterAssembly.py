@@ -25,8 +25,7 @@ from KernelWriter import KernelWriter
 from math import log, ceil
 import collections
 import traceback
-import Instruction
-from Instruction import Inst,LoadInst,LocalWriteInst,LocalReadInst
+import Code
 
 ################################################################################
 # Memory Instruction
@@ -4184,7 +4183,7 @@ class KernelWriterAssembly(KernelWriter):
   ##############################################################################
   def globalReadIncrement(self, kernel, loopIdx, tP, prefetchIndex):
     if not self.do["GlobalInc"]: return ""
-    imod = Instruction.Module()
+    imod = Code.Module()
     tc = tP["tensorChar"]
 
     imod.addComment("global read inc %s"%tc)
@@ -4408,7 +4407,7 @@ class KernelWriterAssembly(KernelWriter):
 
                 bpl = numElementsPerLoad*self.bpeAB # bytesPerLoad
 
-                kStr += self.chooseGlobalLoad(True, \
+                kStr += self.chooseGlobalRead(True, \
                           bpl, destVgpr=destVgpr, \
                           addr0=vgpr(offsetVgpr), addr1=sgpr("Srd%s"%tc, 4), \
                           soffset=soffset, offset=offset, \
@@ -4424,7 +4423,7 @@ class KernelWriterAssembly(KernelWriter):
                     "addr < maxAddr")
 
                 # load one element from address
-                kStr += self.chooseGlobalLoad(False, \
+                kStr += self.chooseGlobalRead(False, \
                           self.bpeAB, destVgpr="G2L%s+%u+%u"%(tc, g2lIdx, regIdx), \
                           addr0=vgpr("GlobalReadAddr%s+%u"%(tc,graIdx),2), addr1="", \
                           soffset=0, offset=0, \
@@ -4495,7 +4494,7 @@ class KernelWriterAssembly(KernelWriter):
   def globalReadDo(self, kernel, mode, tP):
     if not self.do["GlobalRead%s"%tP["tensorChar"]]: return ""
     tc = tP["tensorChar"]
-    imod = Instruction.StructuredModule("globalReadDo%s_%u"%(tc,mode))
+    imod = Code.StructuredModule("globalReadDo%s_%u"%(tc,mode))
     imod.addComment("global read %s"%tc)
     graIdx = 0
     g2lIdx = 0
@@ -4561,7 +4560,7 @@ class KernelWriterAssembly(KernelWriter):
             graIdx = i * self.rpgo if kernel["BufferLoad"] else i * self.rpga
             g2lIdx = i * loadWidth
             # Each load may contains a small bundle of instructions, package them together in loadModule:
-            loadModule = Instruction.Module("load%u"%loopCnt)
+            loadModule = Code.Module("load%u"%loopCnt)
             imod.middle.addCode(loadModule)
 
             if kernel["BufferLoad"]:
@@ -4595,7 +4594,7 @@ class KernelWriterAssembly(KernelWriter):
               else:
                 destVgpr="G2L%s+%u"%(tc, g2lIdx)
 
-              loadModule.addCode( self.chooseGlobalLoad(kernel["BufferLoad"], \
+              loadModule.addCode( self.chooseGlobalRead(kernel["BufferLoad"], \
                         bpl, destVgpr=destVgpr, \
                         addr0=vgpr(offsetVgpr), addr1=sgpr("Srd%s"%tc, 4), \
                         soffset=soffset, offset=0, \
@@ -4605,7 +4604,7 @@ class KernelWriterAssembly(KernelWriter):
               #print "IM=", type(imod.instList[-1]), imod.instList[-1], 
             else: # not buffer load
               # load one element from address
-              loadModule.addCode( self.chooseGlobalLoad(False, \
+              loadModule.addCode( self.chooseGlobalRead(False, \
                         bpl, \
                         destVgpr="G2L%s+%u"%(tc, g2lIdx), \
                         addr0=vgpr("GlobalReadAddr%s+%u"%(tc,graIdx),2), addr1="", \
@@ -4807,7 +4806,7 @@ class KernelWriterAssembly(KernelWriter):
     if not self.do["LocalWrite"]: return ""
     tc = tP["tensorChar"]
     self.localWriteDoCnt += 1
-    imod = Instruction.Module()
+    imod = Code.Module()
     if not kernel["DirectToLds%s"%tc]:
       instruction = tP["localWriteInstruction"]
       numBlocks = instruction.numBlocks
@@ -4838,7 +4837,7 @@ class KernelWriterAssembly(KernelWriter):
       instructionCnt = -1
       for perp in range(0, tP["nrp"]):
         instructionCnt += 1
-        localWriteCode = imod.addCode(Instruction.Module("LocalWritee%u"%instructionCnt))
+        localWriteCode = imod.addCode(Code.Module("LocalWritee%u"%instructionCnt))
         lwa = "LocalWriteAddr%s"%tc  # default
         if kernel["FractionalLoad"] and perp==tP["nrp"]-1:
           overhang = kernel["fractionalPerpOverhang%s"%tc]
@@ -4899,7 +4898,7 @@ class KernelWriterAssembly(KernelWriter):
                 highBits = True
               if tP["glvw"]==1 and instructionCnt%2==1:
                 highBits = True
-            localWriteCode.addCode(LocalWriteInst( \
+            localWriteCode.addCode(Code.LocalWriteInst( \
                 tP["localWriteInstruction"].toString(paramTuple, comment, \
                 nonTemporal, highBits),""))
 
@@ -5014,7 +5013,7 @@ class KernelWriterAssembly(KernelWriter):
 
     tc=tP["tensorChar"]
     if not self.do["LocalRead%s"%tc]: return ""
-    imod = Instruction.Module()
+    imod = Code.Module()
     self.localReadDoCnt += 1
     instruction = tP["localReadInstruction"]
     numOffsets = instruction.numOffsets
@@ -5028,7 +5027,7 @@ class KernelWriterAssembly(KernelWriter):
     #print "numReadsPerVector", numReadsPerVector
     for vIdx in range(0, numVectorsPerTile):
       for rIdx in range(0, numReadsPerVector):
-        localReadCode = imod.addCode (Instruction.Module("LocalRead Valu%u"%valuIdx))
+        localReadCode = imod.addCode (Code.Module("LocalRead Valu%u"%valuIdx))
         paramList = []
         destVgpr = vgpr("Valu%s_X%u_I%u+%u"%(tc, bufferIdx, iui, valuIdx), blockWidth)
         paramList.append(destVgpr)
@@ -5039,7 +5038,7 @@ class KernelWriterAssembly(KernelWriter):
         paramTuple = tuple(paramList)
         comment = "L -> Reg lro=%d swapByteOffset=%u ti=%u vIdx=%u rIdx=%u oIdx=%u buffer=%u iui=%u"\
             %(tP["localReadOffset"],tP["localReadSwapByteOffset"],kernel["SubGroup%u"%tP["tensorIdx"]], vIdx, rIdx, oIdx, bufferIdx, iui)
-        localReadCode.addCode(LocalReadInst(instruction.toString(paramTuple, comment), ""))
+        localReadCode.addCode(Code.LocalReadInst(instruction.toString(paramTuple, comment), ""))
         valuIdx += blockWidth
 
         # TODO - handle vector-load
@@ -6167,13 +6166,13 @@ class KernelWriterAssembly(KernelWriter):
 
 
   ##############################################################################
-  # chooseGlobalLoad :
+  # chooseGlobalRead :
   # create the load instruction for requested vector width and other parms
   # return an Inst class
   #
   # bpl = bytes per load op
   ##############################################################################
-  def chooseGlobalLoad(self, useBuffer, bpl, destVgpr, \
+  def chooseGlobalRead(self, useBuffer, bpl, destVgpr, \
                        addr0, addr1, soffset, offset, extraFields, hi16=0, comment="load C"):
 
   # rpv = regs per vector
@@ -6184,42 +6183,42 @@ class KernelWriterAssembly(KernelWriter):
       if extraFields != "":
         tailFields += ", %s"% extraFields
       if bpl==2 and hi16:
-        return LoadInst("buffer_load_short_d16_hi", vgpr(destVgpr, rpv*2), addr0, \
+        return Code.GlobalReadInst("buffer_load_short_d16_hi", vgpr(destVgpr, rpv*2), addr0, \
                   addr1, soffset, tailFields, comment)
       elif bpl==2 and not hi16:
-        return LoadInst("buffer_load_short_d16", vgpr(destVgpr, rpv*2), addr0, \
+        return Code.GlobalReadInst("buffer_load_short_d16", vgpr(destVgpr, rpv*2), addr0, \
                   addr1, soffset, tailFields, comment)
       elif bpl==4:
-        return LoadInst("buffer_load_dword", vgpr(destVgpr, rpv), addr0, \
+        return Code.GlobalReadInst("buffer_load_dword", vgpr(destVgpr, rpv), addr0, \
                   addr1, soffset, tailFields, comment)
       elif bpl==8:
-        return LoadInst("buffer_load_dwordx2", vgpr(destVgpr, rpv), addr0, \
+        return Code.GlobalReadInst("buffer_load_dwordx2", vgpr(destVgpr, rpv), addr0, \
                   addr1, soffset, tailFields, comment)
       elif bpl==16:
-        return LoadInst("buffer_load_dwordx4", vgpr(destVgpr, rpv), addr0, \
+        return Code.GlobalReadInst("buffer_load_dwordx4", vgpr(destVgpr, rpv), addr0, \
                   addr1, soffset, tailFields, comment)
       else:
-        assert ("chooseGlobalLoad: bad bpl")
+        assert ("chooseGlobalRead: bad bpl")
 
     else:
       if bpl==2 and hi16:
-        return LoadInst("flat_load_short_d16_hi", vgpr(destVgpr, rpv*2), addr0, extraFields, comment )
+        return Code.GlobalReadInst("flat_load_short_d16_hi", vgpr(destVgpr, rpv*2), addr0, extraFields, comment )
       elif bpl==2 and not hi16:
-        return LoadInst("flat_load_short_d16", vgpr(destVgpr, rpv*2), addr0, extraFields, comment )
+        return Code.GlobalReadInst("flat_load_short_d16", vgpr(destVgpr, rpv*2), addr0, extraFields, comment )
       elif bpl==4:
-        return LoadInst("flat_load_dword", vgpr(destVgpr, rpv), addr0, extraFields, comment )
+        return Code.GlobalReadInst("flat_load_dword", vgpr(destVgpr, rpv), addr0, extraFields, comment )
       elif bpl==8:
-        return LoadInst("flat_load_dwordx2", vgpr(destVgpr, rpv), addr0, extraFields, comment )
+        return Code.GlobalReadInst("flat_load_dwordx2", vgpr(destVgpr, rpv), addr0, extraFields, comment )
       elif bpl==16:
-        return LoadInst("flat_load_dwordx4", vgpr(destVgpr, rpv), addr0, extraFields, comment )
+        return Code.GlobalReadInst("flat_load_dwordx4", vgpr(destVgpr, rpv), addr0, extraFields, comment )
       else:
-        assert ("chooseGlobalLoad: bad bpl")
+        assert ("chooseGlobalRead: bad bpl")
 
   # create the store instruction for requested vector width and other parms
   #
   # rpv = regs per vector
   ##############################################################################
-  def chooseGlobalStore(self, useBuffer, bps, srcVgpr, rpv, \
+  def chooseGlobalWrite(self, useBuffer, bps, srcVgpr, rpv, \
                         addr0, addr1, offset, extraFields, hi16=0):
     kStr = ""
 
@@ -6542,7 +6541,7 @@ class KernelWriterAssembly(KernelWriter):
           else:
             addr0 = vgpr(addr,2)
             addr1 = ""
-          kStr += self.chooseGlobalLoad(useBuffer, bpm, dataV+1, \
+          kStr += self.chooseGlobalRead(useBuffer, bpm, dataV+1, \
                     addr0, addr1, soffset=0, offset=avi*bpm, extraFields="",
                     comment="load C (atomic) bpm=%u vaw=%u"%(bpm,atomicW)).toStr()
       elif beta:
@@ -6556,13 +6555,13 @@ class KernelWriterAssembly(KernelWriter):
           addr1 = ""
         extraFields = ""
         if kernel["ProblemType"]["DataType"].isHalf():
-          kStr += self.chooseGlobalLoad(useBuffer, bps, data, \
+          kStr += self.chooseGlobalRead(useBuffer, bps, data, \
                     addr0, addr1, 0, 0, extraFields, hi16=sumIdx%2,
                     comment="load C for beta calc").toStr()
         elif kernel["ProblemType"]["DataType"].isInt8x4() or \
              kernel["ProblemType"]["DataType"].isSingle() or \
              kernel["ProblemType"]["DataType"].isDouble():
-          kStr += self.chooseGlobalLoad(useBuffer, bps, data, \
+          kStr += self.chooseGlobalRead(useBuffer, bps, data, \
                     addr0, addr1, 0, 0, extraFields,
                     comment="load C for beta calc").toStr()
 
@@ -6929,16 +6928,16 @@ class KernelWriterAssembly(KernelWriter):
 
           if kernel["ProblemType"]["DataType"].isHalf():
             if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
-              kStr += self.chooseGlobalStore(useBuffer, bps, sumIdx/2, rpv, \
+              kStr += self.chooseGlobalWrite(useBuffer, bps, sumIdx/2, rpv, \
                         addr0, addr1, 0, ntStr, hi16=sumIdx%2)
             else:
-              kStr += self.chooseGlobalStore(useBuffer, bps, sumIdx, rpv, \
+              kStr += self.chooseGlobalWrite(useBuffer, bps, sumIdx, rpv, \
                         addr0, addr1, 0, ntStr, hi16=0)
           elif kernel["ProblemType"]["DataType"].isInt8x4() or kernel["ProblemType"]["DataType"].isSingle():
-            kStr += self.chooseGlobalStore(useBuffer, bps, sumIdx, rpv, \
+            kStr += self.chooseGlobalWrite(useBuffer, bps, sumIdx, rpv, \
                       addr0, addr1, 0, ntStr)
           elif kernel["ProblemType"]["DataType"].isDouble():
-            kStr += self.chooseGlobalStore(useBuffer, bps, sumIdx*2, rpv, \
+            kStr += self.chooseGlobalWrite(useBuffer, bps, sumIdx*2, rpv, \
                       addr0, addr1, 0, ntStr)
 
           #kStr += self.bomb(5)
@@ -6959,16 +6958,16 @@ class KernelWriterAssembly(KernelWriter):
 
           if kernel["ProblemType"]["DataType"].isHalf():
             if not kernel["ProblemType"]["HighPrecisionAccumulate"]:
-              kStr += self.chooseGlobalLoad(useBuffer, bps, sumIdx/2, \
+              kStr += self.chooseGlobalRead(useBuffer, bps, sumIdx/2, \
                         addr0, addr1, soffset=0, offset=0, extraFields="", hi16=sumIdx%2).toStr()
             else:
-              kStr += self.chooseGlobalLoad(useBuffer, bps, sumIdx, \
+              kStr += self.chooseGlobalRead(useBuffer, bps, sumIdx, \
                         addr0, addr1, soffset=0, offset=0, extraFields="", hi16=0).toStr()
           elif kernel["ProblemType"]["DataType"].isInt8x4() or kernel["ProblemType"]["DataType"].isSingle():
-            kStr += self.chooseGlobalLoad(useBuffer, bps, sumIdx, \
+            kStr += self.chooseGlobalRead(useBuffer, bps, sumIdx, \
                       addr0, addr1, soffset=0, offset=0, extraFields="").toStr()
           elif kernel["ProblemType"]["DataType"].isDouble():
-            kStr += self.chooseGlobalLoad(useBuffer, bps, sumIdx*2, \
+            kStr += self.chooseGlobalRead(useBuffer, bps, sumIdx*2, \
                       addr0, addr1, soffset=0, offset=0, extraFields="").toStr()
         kStr += inst("s_waitcnt", "vmcnt(0)", "CheckStoreC, wait for stores to complete" )
 
@@ -7051,7 +7050,7 @@ class KernelWriterAssembly(KernelWriter):
     return ""
 
   def vmwait(self, kernel, count):
-    imod = Instruction.Module()
+    imod = Code.Module()
     imod.addInst("s_waitcnt vmcnt(%u)"%count, "vmwait for global read")
     return imod
 
