@@ -87,10 +87,10 @@ class StructuredModule(Module):
     self.append(self.middle)
     self.append(self.footer)
 
-class LocalWriteModule (Module):
-  def __init__(self,name):
-    Module.__init__(self,name)
-
+"""
+Inst is an instruction.
+Currently just stores text but over time may grow
+"""
 class Inst:
   def __init__(self, *args):
     params = args[0:len(args)-1]
@@ -109,7 +109,20 @@ class Inst:
   def toStr(self):
     return str(self)
 
+  def countType(self,ttype):
+    return int(isinstance(self, ttype))
+
+# uniq type that can be used in Module.countType
 class LoadInst (Inst):
   def __init__(self,*args):
     Inst.__init__(self,*args)
 
+# uniq type that can be used in Module.countType
+class LocalWriteInst (Inst):
+  def __init__(self,*args):
+    Inst.__init__(self,*args)
+
+# uniq type that can be used in Module.countType
+class LocalReadInst (Inst):
+  def __init__(self,*args):
+    Inst.__init__(self,*args)

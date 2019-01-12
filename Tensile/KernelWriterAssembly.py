@@ -26,7 +26,7 @@ from math import log, ceil
 import collections
 import traceback
 import Instruction
-from Instruction import Inst,LoadInst
+from Instruction import Inst,LoadInst,LocalWriteInst,LocalReadInst
 
 ################################################################################
 # Memory Instruction
@@ -4838,8 +4838,8 @@ class KernelWriterAssembly(KernelWriter):
       instructionCnt = -1
       for perp in range(0, tP["nrp"]):
         instructionCnt += 1
-        dsWriteCode = Instruction.LocalWriteModule("ds_write%u"%instructionCnt)
-        imod.append(dsWriteCode)
+        localWriteCode = Instruction.Module("LocalWritee%u"%instructionCnt)
+        imod.append(localWriteCode)
         lwa = "LocalWriteAddr%s"%tc  # default
         if kernel["FractionalLoad"] and perp==tP["nrp"]-1:
           overhang = kernel["fractionalPerpOverhang%s"%tc]
@@ -4849,8 +4849,8 @@ class KernelWriterAssembly(KernelWriter):
 
             validWI = overhang*kernel[tP["lsc"]]/tP["glvw"]
             #print "%s: overhang=%u element validWI=%u" % (tc, overhang, validWI)
-            dsWriteCode.append(self.comment1("LastPerp.  overhang=%u, mask WI>%u" % (overhang, validWI)))
-            dsWriteCode.instStr("v_cndmask_b32", \
+            localWriteCode.append(self.comment1("LastPerp.  overhang=%u, mask WI>%u" % (overhang, validWI)))
+            localWriteCode.instStr("v_cndmask_b32", \
                         vgpr(tmpLocalWriteAddr), \
                         1.0, \
                         vgpr("LocalWriteAddr%s"%tc), \
@@ -4900,8 +4900,9 @@ class KernelWriterAssembly(KernelWriter):
                 highBits = True
               if tP["glvw"]==1 and instructionCnt%2==1:
                 highBits = True
-            dsWriteCode.append(tP["localWriteInstruction"].toString(paramTuple, comment, \
-                nonTemporal, highBits))
+            localWriteCode.append(LocalWriteInst( \
+                tP["localWriteInstruction"].toString(paramTuple, comment, \
+                nonTemporal, highBits),""))
 
             loopCnt+=1
 
@@ -4911,9 +4912,9 @@ class KernelWriterAssembly(KernelWriter):
     # localWriteDoCnt<=2 is prefetch if PrefetchGlobalRead:
     if 0 and tP["isB"]:
     #if 0 and self.localWriteDoCnt >= 0:
-      dsWriteCode.append( "s_waitcnt lgkmcnt(0) & vmcnt(0)\n")
-      dsWriteCode.instStr("s_barrier", "dump LDS" )
-      dsWriteCode.append(self.bomb())
+      localWriteCode.append( "s_waitcnt lgkmcnt(0) & vmcnt(0)\n")
+      localWriteCode.instStr("s_barrier", "dump LDS" )
+      localWriteCode.append(self.bomb())
 
     return imod
 
@@ -5028,6 +5029,8 @@ class KernelWriterAssembly(KernelWriter):
     #print "numReadsPerVector", numReadsPerVector
     for vIdx in range(0, numVectorsPerTile):
       for rIdx in range(0, numReadsPerVector):
+        localReadCode = Instruction.Module("LocalRead Valu%u"%valuIdx)
+        imod.append(localReadCode)
         paramList = []
         destVgpr = vgpr("Valu%s_X%u_I%u+%u"%(tc, bufferIdx, iui, valuIdx), blockWidth)
         paramList.append(destVgpr)
@@ -5038,17 +5041,17 @@ class KernelWriterAssembly(KernelWriter):
         paramTuple = tuple(paramList)
         comment = "L -> Reg lro=%d swapByteOffset=%u ti=%u vIdx=%u rIdx=%u oIdx=%u buffer=%u iui=%u"\
             %(tP["localReadOffset"],tP["localReadSwapByteOffset"],kernel["SubGroup%u"%tP["tensorIdx"]], vIdx, rIdx, oIdx, bufferIdx, iui)
-        imod.append(instruction.toString(paramTuple, comment))
+        localReadCode.append(LocalReadInst(instruction.toString(paramTuple, comment), ""))
         valuIdx += blockWidth
 
         # TODO - handle vector-load
         if self.db["CheckValue1%s"%tc]:
-            imod.instStr("s_waitcnt lgkmcnt(0)", "CheckValue1 wait for LDS read")
+            localReadCode.instStr("s_waitcnt lgkmcnt(0)", "CheckValue1 wait for LDS read")
             if kernel["ProblemType"]["DataType"].isHalf():
-              imod.append(self.assert_eq(destVgpr, hex(0x3c003c00))) # packed 1s
+              localReadCode.append(self.assert_eq(destVgpr, hex(0x3c003c00))) # packed 1s
             elif kernel["ProblemType"]["DataType"].isInt8x4() or \
                  kernel["ProblemType"]["DataType"].isSingle():
-              imod.append(self.assert_eq(destVgpr, 1.0))
+              localReadCode.append(self.assert_eq(destVgpr, 1.0))
 
     #if tP["isB"]:
     #  kStr += self.dumpLds(kernel, 0, 16)
@@ -5063,7 +5066,7 @@ class KernelWriterAssembly(KernelWriter):
     if 0 and tP["isA"] and self.localReadDoCnt==3:
       # skip over tmp used above, so it doesn't get trashed
       tmpVgpr = self.vgprPool.checkOut(3)
-      imod.append(self.bomb(self.localReadDoCnt + 10, tmpVgpr+1))
+      localReadCode.append(self.bomb(self.localReadDoCnt + 10, tmpVgpr+1))
       self.vgprPool.checkIn(tmpVgpr)
     return imod
 
