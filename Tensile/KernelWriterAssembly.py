@@ -4805,10 +4805,9 @@ class KernelWriterAssembly(KernelWriter):
   def localWriteDo(self, kernel, tP):
 
     if not self.do["LocalWrite"]: return ""
-
+    tc = tP["tensorChar"]
     self.localWriteDoCnt += 1
     imod = Instruction.Module()
-    tc = tP["tensorChar"]
     if not kernel["DirectToLds%s"%tc]:
       instruction = tP["localWriteInstruction"]
       numBlocks = instruction.numBlocks
@@ -4834,12 +4833,13 @@ class KernelWriterAssembly(KernelWriter):
 
       tmpLocalWriteAddr = -1
 
-#jgolds HACK
       loopCnt = 0
       # if transposing, positions of sPerp and sPara are transposed
       instructionCnt = -1
       for perp in range(0, tP["nrp"]):
         instructionCnt += 1
+        dsWriteCode = Instruction.LocalWriteModule("ds_write%u"%instructionCnt)
+        imod.append(dsWriteCode)
         lwa = "LocalWriteAddr%s"%tc  # default
         if kernel["FractionalLoad"] and perp==tP["nrp"]-1:
           overhang = kernel["fractionalPerpOverhang%s"%tc]
@@ -4849,8 +4849,8 @@ class KernelWriterAssembly(KernelWriter):
 
             validWI = overhang*kernel[tP["lsc"]]/tP["glvw"]
             #print "%s: overhang=%u element validWI=%u" % (tc, overhang, validWI)
-            imod.append(self.comment1("LastPerp.  overhang=%u, mask WI>%u" % (overhang, validWI)))
-            imod.instStr("v_cndmask_b32", \
+            dsWriteCode.append(self.comment1("LastPerp.  overhang=%u, mask WI>%u" % (overhang, validWI)))
+            dsWriteCode.instStr("v_cndmask_b32", \
                         vgpr(tmpLocalWriteAddr), \
                         1.0, \
                         vgpr("LocalWriteAddr%s"%tc), \
@@ -4900,7 +4900,7 @@ class KernelWriterAssembly(KernelWriter):
                 highBits = True
               if tP["glvw"]==1 and instructionCnt%2==1:
                 highBits = True
-            imod.append(tP["localWriteInstruction"].toString(paramTuple, comment, \
+            dsWriteCode.append(tP["localWriteInstruction"].toString(paramTuple, comment, \
                 nonTemporal, highBits))
 
             loopCnt+=1
@@ -4911,9 +4911,9 @@ class KernelWriterAssembly(KernelWriter):
     # localWriteDoCnt<=2 is prefetch if PrefetchGlobalRead:
     if 0 and tP["isB"]:
     #if 0 and self.localWriteDoCnt >= 0:
-      imod.append( "s_waitcnt lgkmcnt(0) & vmcnt(0)\n")
-      imod.instStr("s_barrier", "dump LDS" )
-      imod.append(self.bomb())
+      dsWriteCode.append( "s_waitcnt lgkmcnt(0) & vmcnt(0)\n")
+      dsWriteCode.instStr("s_barrier", "dump LDS" )
+      dsWriteCode.append(self.bomb())
 
     return imod
 
@@ -7048,6 +7048,12 @@ class KernelWriterAssembly(KernelWriter):
   ##############################################################################
   def closeString(self, kernel):
     return ""
+
+  def vmwait(self, kernel, count):
+    imod = Instruction.Module()
+    imod.instStr("s_waitcnt vmcnt(%u)"%count, "wait for global read")
+    return imod
+
 
   ##############################################################################
   # WaitCnt- DONE

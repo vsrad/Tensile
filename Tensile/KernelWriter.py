@@ -55,16 +55,17 @@ class KernelWriter:
   #        Each entry in the list is a code module that should be added into that iteration.
   #        May be None, indicating no extra code for that iteration
 
-  # This routine is responsible for setting the schedule including determining 
-  # that all necessary dependency are met.  The driver code in kernelBody 
+  # This routine is responsible for setting the schedule including determining
+  # that all necessary dependency are met.  The driver code in kernelBody
   # blindly follows the plan set in unrollLoopHeaderCode and perIterCode
   ##############################################################################
-  def makeSchedule(self, kernel):
+  def makeSchedule(self, kernel, tensorParametersA, tensorParametersB):
 
     self.unrollLoopHeaderCode = Instruction.Module()
     # schedule of work for each local_read iteration:
-    self.perIterCode = [ Instruction.Module() for i in range (kernel["LoopUnroll"]-1) ]
+    self.perIterCode = [ Instruction.Module() for i in range (kernel["LoopUnroll"]) ]
 
+    lastLoadIter = 0
     if not self.scheduleGlobalRead:
       # put everything in the header:
       self.unrollLoopHeaderCode.append(self.globalReadA)
@@ -72,6 +73,9 @@ class KernelWriter:
       self.unrollLoopHeaderCode.append(self.globalReadIncA)
       self.unrollLoopHeaderCode.append(self.globalReadIncB)
     else:
+      self.unrollLoopHeaderCode.append(self.globalReadA.header)
+      self.unrollLoopHeaderCode.append(self.globalReadB.header)
+
       readCnt = self.globalReadA.middle.count() + self.globalReadB.middle.count()
       # reads and incs are scheduled in iters range(0...endIter)
       endIter = readCnt + 2 # 2 for incA and incB
@@ -83,8 +87,6 @@ class KernelWriter:
         endIter = kernel["LoopUnroll"]-1
       else:
         firstStep = 1
-        self.unrollLoopHeaderCode.append(self.globalReadA.header)
-        self.unrollLoopHeaderCode.append(self.globalReadB.header)
 
       # Add all loads from middle as individual schedulable items
       itemsToSched =  self.globalReadA.middle.items() + \
@@ -95,12 +97,13 @@ class KernelWriter:
       for item in itemsToSched[:firstStep]:
         self.perIterCode[0].append(item)
       itemsToSched = itemsToSched[firstStep:]
-      step = 1
-      for u in range(1, endIter, step):
+      for u in range(1, endIter):
+        itemPerIter = 1
         try:
-          for item in itemsToSched[:step]:
+          for item in itemsToSched[:itemPerIter]:
             self.perIterCode[u].append(item)
-          itemsToSched = itemsToSched[step:]
+            lastLoadIter = item.countType(Instruction.LoadInst)
+          itemsToSched = itemsToSched[itemPerIter:]
         except IndexError:
           break # no code left to schedule
 
@@ -109,6 +112,51 @@ class KernelWriter:
       self.perIterCode[endIter-1].append(self.globalReadA.footer)
       self.perIterCode[endIter-1].append(self.globalReadB.footer)
 
+
+    # Now schedule the writes:
+    if not self.scheduleLocalWrite:
+      # if no scheduleLocalWrite - just add all writes to final iteration
+      if self.enable["Wait"]:
+        self.perIterCode[-1].append(
+            self.wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, \
+            "1wait for global read"))
+      self.perIterCode[-1].append(self.comment("local write a"))
+      self.perIterCode[-1].append(self.localWriteCodeA)
+      self.perIterCode[-1].append(self.comment("local write b"))
+      self.perIterCode[-1].append(self.localWriteCodeB)
+    else:
+      # create a plan:
+      #print "lwa=", self.localWriteCodeA.prettyPrint()
+      writeCount = self.localWriteCodeA.countType(Instruction.LocalWriteModule) + \
+                   self.localWriteCodeB.countType(Instruction.LocalWriteModule)
+      print "writeCount=", writeCount
+      startIter = kernel["LoopUnroll"] - writeCount
+
+      # - can't move a write past the load it depends on
+      #   as a simplificaton, don't move writes past any loads
+      if startIter < lastLoadIter:
+        startIter = lastLoadIter
+
+      itemsToSched = self.localWriteCodeA.items() + self.localWriteCodeB.items()
+      writesToSched = writeCount
+      for u in range(startIter, kernel["LoopUnroll"]):
+        if u==(kernel["LoopUnroll"]-1):
+          itemPerIter = len(itemsToSched) # schedule all remaining activity
+        else:
+          itemPerIter = 1
+
+        for item in itemsToSched[:itemPerIter]:
+          # Prepend a waitcnt if needed
+          self.perIterCode[u].comment("sched_write - iter %u"%(u))
+          if isinstance(item, Instruction.LocalWriteModule):
+            writesToSched = writesToSched - 1
+            #self.perIterCode[u].append(self.vmwait(kernel, writesToSched))
+            self.perIterCode[u].append(self.vmwait(kernel,0))
+          self.perIterCode[u].append(item)
+        itemsToSched = itemsToSched[itemPerIter:]
+
+      # should never run out of items to schedule
+      assert not itemsToSched # should have scheduled everthing already
 
   ##############################################################################
   # Kernel Body
@@ -347,7 +395,7 @@ class KernelWriter:
         kl.append(self.comment("global read inc b"))
         kl.append(self.globalReadIncrement(kernel, self.unrollIdx, tensorParametersB, pfi))
       if self.enable["Wait"]:
-        kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, "3wait for global read"))
+        kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, "8wait for global read"))
       if self.enable["LocalWrite"]:
         # local write
         kl.append(self.comment("local write a"))
@@ -412,14 +460,14 @@ class KernelWriter:
         self.globalReadIncB = ""
 
       if self.enable["LocalWrite"]:
-        localWriteCodeA = self.localWriteDo(kernel, tensorParametersA)
-        localWriteCodeB = self.localWriteDo(kernel, tensorParametersB)
+        self.localWriteCodeA = self.localWriteDo(kernel, tensorParametersA)
+        self.localWriteCodeB = self.localWriteDo(kernel, tensorParametersB)
       else:
-        localWriteCodeA = ""
-        localWriteCodeB = ""
+        self.localWriteCodeA = ""
+        self.localWriteCodeB = ""
 
       # Schedule the global read, global read inc, and writes:
-      self.makeSchedule(kernel)
+      self.makeSchedule(kernel, tensorParametersA, tensorParametersB)
       kl.append(str(self.unrollLoopHeaderCode))
 
       if kernel["PrefetchGlobalRead"] and not kernel["PrefetchLocalRead"]:
@@ -483,9 +531,8 @@ class KernelWriter:
         kl.append(self.comment("iter %u%s"%(u,extraComment)))
         plrIdx = (u+pf) % (kernel["PrefetchLocalRead"]+1)
 
-        iterCode = self.perIterCode[u]
-        if iterCode:
-          kl.append(iterCode)
+        kl.append(self.perIterCode[u]) # Add in scheduled code
+
         for iui in range(0,kernel["InnerUnroll"]):
           if self.enable["LocalRead"]:
             kl.append(self.comment("local read a"))
@@ -508,9 +555,9 @@ class KernelWriter:
             if self.enable["LocalWrite"]:
               # local write for next iter
               kl.append(self.comment("local write a"))
-              kl.append(localWriteCodeA)
+              kl.append(self.localWriteCodeA)
               kl.append(self.comment("local write b"))
-              kl.append(localWriteCodeB)
+              kl.append(self.localWriteCodeB)
               kl.append(self.comment("local write swap offsets a"))
               kl.append(self.localWriteSwapOffsets(kernel, tensorParametersA))
               kl.append(self.comment("local write swap offsets b"))
@@ -572,7 +619,8 @@ class KernelWriter:
       kl.append(self.comment("iter %u (last)"%unrollIter))
       if kernel["PrefetchGlobalRead"] and kernel["PrefetchLocalRead"]:
         if self.enable["Wait"]:
-          kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, -1, 0, -1, "3wait for local write"))
+          kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, -1, 0, -1, \
+              "3wait for local write"))
         if self.enable["Sync"]:
           kl.append(self.syncThreads(kernel))
       if not kernel["PrefetchLocalRead"] or kernel["PrefetchGlobalRead"]:
@@ -597,17 +645,10 @@ class KernelWriter:
           kl.append(self.localReadInc(kernel, iui, tensorParametersA))
           kl.append(self.comment("local read inc b"))
           kl.append(self.localReadInc(kernel, iui, tensorParametersB))
-      elif kernel["PrefetchGlobalRead"]:
-        assert (not kernel["PrefetchLocalRead"])
-        if self.enable["Wait"]:
-          kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, "1wait for global read"))
+      elif kernel["PrefetchGlobalRead"] and not kernel["PrefetchLocalRead"]:
+        kl.append(self.perIterCode[unrollIter])
+
         if self.enable["LocalWrite"]:
-          # local write
-          if not self.scheduleLocalWrite:
-            kl.append(self.comment("local write a"))
-            kl.append(localWriteCodeA)
-            kl.append(self.comment("local write b"))
-            kl.append(localWriteCodeB)
           kl.append(self.comment("local write swap offsets a"))
           kl.append(self.localWriteSwapOffsets(kernel, tensorParametersA))
           kl.append(self.comment("local write swap offsets b"))
@@ -627,7 +668,12 @@ class KernelWriter:
           kl.append(self.comment("local read init pointers b"))
           kl.append(self.localReadInitPointers(kernel, tensorParametersB))
         if self.enable["Wait"]:
-          kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, -1, 1, 0, "6wait for local read"))
+          if self.scheduleLocalWrite:
+            # bozo - could perhaps make this more optimal
+            kl.append(Inst("s_waitcnt lgkmcnt(0)", "wait for locals (perhaps conservatively)"))
+          else:
+            kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, -1, 1, 0, \
+                "6wait for local read"))
       elif not kernel["PrefetchGlobalRead"] and not kernel["PrefetchLocalRead"]:
         if self.enable["LocalRead"]:
           # local read init ptrs
@@ -637,10 +683,11 @@ class KernelWriter:
           kl.append(self.localReadInitPointers(kernel, tensorParametersB))
         if self.enable["Wait"]:
           kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, -1, -1, 0, "1wait for local read"))
-      else:
-        assert (  not kernel["PrefetchGlobalRead"] and kernel["PrefetchLocalRead"]:  )
+      elif not kernel["PrefetchGlobalRead"] and kernel["PrefetchLocalRead"]:
         if self.enable["Wait"]:
           kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, -1, -1, 0, "2wait for local read"))
+      else:
+        assert(0) # unknown PGR/PLR pattern
       # no wait needed here b/c we already waited for ds_write
       # which waited for this ds_read
       if self.enable["MAC"]:
@@ -657,7 +704,7 @@ class KernelWriter:
         kl.append(self.comment3("Unrolled Loop - End"))
       kl.append(self.closeLoop(kernel, self.unrollIdx, finalLoop))
 
-    # prefetch: unrolled loop suffix - this is an copy of the unroll loop but with global loads + LDS writes removed
+    # This "NoLoad" loop is a copy of the unroll loop but with global loads + LDS writes removed
     if kernel["PrefetchGlobalRead"] and not kernel["SuppresssNoLoadLoop"]:
       kl.append(self.comment("prefetch: last unrolled iteration"))
       kl.append(self.openSumAtLeastUnroll(kernel, False))
@@ -682,7 +729,8 @@ class KernelWriter:
               kl.append(self.localReadInc(kernel, iui, tensorParametersB))
         if self.enable["Wait"]:
           kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, -1, -1, \
-              1 if (u < kernel["LoopUnroll"]-1 and kernel["PrefetchLocalRead"]) else 0, "3wait for local read"))
+              1 if (u < kernel["LoopUnroll"]-1 and kernel["PrefetchLocalRead"]) else 0, \
+              "7wait for local read"))
         if self.enable["MAC"]:
           luIdx = (u) % (kernel["PrefetchLocalRead"] + 1)
           kl.append(self.macIter(kernel, luIdx, kernel["InnerUnroll"] ))
@@ -932,7 +980,8 @@ class KernelWriter:
 
     if self.canSchedule:
       self.scheduleLocalWrite = kernel["ScheduleLocalWrite"] \
-          and kernel["PrefetchGlobalRead"]
+          and kernel["PrefetchGlobalRead"] \
+          and not kernel["PrefetchLocalRead"] # bozo, this can be optimized
     else:
       self.scheduleLocalWrite = 0
 

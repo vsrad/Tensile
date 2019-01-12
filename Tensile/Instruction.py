@@ -1,3 +1,11 @@
+"""
+Modules contain lists of text instructions, Inst objects, or additional modules
+They can be easily converted to string that represents all items in the list
+and can be mixed with standard text.
+The intent is to allow the kernel writer to express the structure of the
+code (ie which instructions are a related module) so the scheduler can later
+make intelligent and legal transformations.
+"""
 class Module:
   def __init__(self, name=""):
     self.name = name
@@ -13,7 +21,7 @@ class Module:
     self.itemList.append(inst)
 
   def comment(self, comment):
-    self.itemList.append(comment)
+    self.itemList.append("// %s\n"%comment)
 
   def instStr(self, *args):
     params = args[0:len(args)-1]
@@ -36,9 +44,15 @@ class Module:
       else: # Inst
         print indent,"[",str(i),"]"
 
+  """
+  Count number of items with specified type in this Module
+  Will recursively count occurrences in submodules
+  """
   def countType(self,ttype):
     count=0
     for i in self.itemList:
+      if isinstance(i, ttype):
+        count += 1
       if isinstance(i, Module):
         count += i.countType(ttype)
       else:
@@ -73,6 +87,10 @@ class StructuredModule(Module):
     self.append(self.middle)
     self.append(self.footer)
 
+class LocalWriteModule (Module):
+  def __init__(self,name):
+    Module.__init__(self,name)
+
 class Inst:
   def __init__(self, *args):
     params = args[0:len(args)-1]
@@ -91,7 +109,7 @@ class Inst:
   def toStr(self):
     return str(self)
 
-
 class LoadInst (Inst):
   def __init__(self,*args):
     Inst.__init__(self,*args)
+
