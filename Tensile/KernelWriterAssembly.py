@@ -4027,11 +4027,13 @@ class KernelWriterAssembly(KernelWriter):
     else: #finalLoop:
       if not tailLoop:
         kStr += inst("s_cbranch_scc0 label_%04u"%loopLabelBegin, \
-            "restart %s Loop%s"%("unrolled loop", loopChar ))
+            "restart unrolled Loop%s"%(loopChar ))
         kStr += "label_%04u: // unroll loop odditer exit\n" % (loopLabelEndOddExit)
       else: # tailLoop:
+        kStr += inst("s_cbranch_scc1 label_%04u"%(loopLabelEnd), \
+            "exit Loop%s"%loopChar )
         kStr += inst("s_branch label_%04u"%loopLabelBegin, \
-            "restart %s Loop%s"%("tailLoop" if tailLoop else "unrolled loop", loopChar ))
+            "restart tail Loop%s"%(loopChar ))
       if not kernel["SuppressNoLoadLoop"] and kernel["ExpandPointerSwap"]:
         # In this case we kept the 'no-load' loop which has LDS offsets assuming first bank of LDS
         # if we exit the main loop at an odd iter - need to swap LDS read pointers
