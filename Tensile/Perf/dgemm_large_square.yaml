@@ -9,7 +9,7 @@ GlobalParameters:
   EnqueuesPerSync: 30
   SyncsPerBenchmark: 1
   LibraryPrintDebug: False
-  NumElementsToValidate: 0
+  NumElementsToValidate: 1000
   ValidationMaxToPrint: 4
   ValidationPrintValids: False
   ShortNames: False
@@ -43,7 +43,7 @@ BenchmarkProblems:
       ForkParameters:
         - PrefetchGlobalRead: [True]
         - PrefetchLocalRead: [True,False]
-        - SuppressNoLoadLoop: [0,1] # suppress=0 puts less code in core loop
+        - SuppressNoLoadLoop: [0] # suppress=0 puts less code in core loop
         - ThreadTile:
           - [ 6, 4 ]
           - [ 6, 6 ]
