@@ -45,6 +45,11 @@ class KernelWriter:
   ##############################################################################
   # Schedule work into interations
   # Choose which iterations to schedule buffer loads and ds_writes
+  # Inputs:
+  #   localWriteEndIter: loop iteration where last writes should be inserted
+  #      If scheduleLocalWrite=0, all writes will be be placed in this iteration.
+  #      If scheduleLocalWrite=1, the scheduler will work backwards from this
+  #      iteration.
   # Outputs:
   #   self.unrollLoopHeaderCode:
   #      - Code module that should be added into the unroll loop header
@@ -70,16 +75,16 @@ class KernelWriter:
     lastLoadIter = 0
     if not self.scheduleGlobalRead:
       # put everything in the header:
-      self.unrollLoopHeaderCode.addCode(self.globalReadA)
-      self.unrollLoopHeaderCode.addCode(self.globalReadB)
-      self.unrollLoopHeaderCode.addCode(self.globalReadIncA)
-      self.unrollLoopHeaderCode.addCode(self.globalReadIncB)
+      self.unrollLoopHeaderCode.addCode(self.globalReadACode)
+      self.unrollLoopHeaderCode.addCode(self.globalReadBCode)
+      self.unrollLoopHeaderCode.addCode(self.globalReadIncACode)
+      self.unrollLoopHeaderCode.addCode(self.globalReadIncBCode)
     else:
-      self.unrollLoopHeaderCode.addCode(self.globalReadA.header)
-      self.unrollLoopHeaderCode.addCode(self.globalReadB.header)
+      self.unrollLoopHeaderCode.addCode(self.globalReadACode.header)
+      self.unrollLoopHeaderCode.addCode(self.globalReadBCode.header)
 
-      readCnt = self.globalReadA.middle.countType(Code.GlobalReadInst) + \
-                self.globalReadB.middle.countType(Code.GlobalReadInst)
+      readCnt = self.globalReadACode.middle.countType(Code.GlobalReadInst) + \
+                self.globalReadBCode.middle.countType(Code.GlobalReadInst)
       # reads and incs are scheduled in iters range(0...endIter)
       endIter = readCnt + 2 # 2 for incA and incB
 
@@ -93,10 +98,10 @@ class KernelWriter:
         firstStep = 1
 
       # Add all loads from middle as individual schedulable items
-      itemsToSched =  self.globalReadA.middle.items() + \
-                      self.globalReadB.middle.items()
-      itemsToSched.append(self.globalReadIncA)
-      itemsToSched.append(self.globalReadIncB)
+      itemsToSched =  self.globalReadACode.middle.items() + \
+                      self.globalReadBCode.middle.items()
+      itemsToSched.append(self.globalReadIncACode)
+      itemsToSched.append(self.globalReadIncBCode)
 
       if schedDb & 0x1:
         print "makeSchedule-gr, readCnt=", readCnt, "firstStep=", firstStep, "endIter=", endIter
@@ -116,8 +121,8 @@ class KernelWriter:
 
       assert not itemsToSched # should have scheduled everthing already
 
-      self.perIterCode[endIter-1].addCode(self.globalReadA.footer)
-      self.perIterCode[endIter-1].addCode(self.globalReadB.footer)
+      self.perIterCode[endIter-1].addCode(self.globalReadACode.footer)
+      self.perIterCode[endIter-1].addCode(self.globalReadBCode.footer)
 
 
     # Now schedule the writes:
@@ -133,13 +138,13 @@ class KernelWriter:
               self.wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, \
               "1wait for global read"))
         imod.addComment1("local write A")
-        imod.addCode(self.localWriteCodeA)
+        imod.addCode(self.localWriteACode)
         imod.addComment1("local write B")
-        imod.addCode(self.localWriteCodeB)
+        imod.addCode(self.localWriteBCode)
     else:
       # create a plan:
-      writesToSched = self.localWriteCodeA.countType(Code.LocalWriteInst) + \
-                   self.localWriteCodeB.countType(Code.LocalWriteInst)
+      writesToSched = self.localWriteACode.countType(Code.LocalWriteInst) + \
+                   self.localWriteBCode.countType(Code.LocalWriteInst)
       startIter = kernel["LoopUnroll"] - writesToSched
       startIter = localWriteEndIter - writesToSched + 1
       # - can't move a write past the load it depends on
@@ -148,27 +153,27 @@ class KernelWriter:
         startIter = lastLoadIter
 
       if schedDb & 0x2:
-        print "gra=", self.globalReadA.middle.prettyPrint()
-        print "lwa=", self.localWriteCodeA.prettyPrint()
+        print "gra=", self.globalReadACode.middle.prettyPrint()
+        print "lwa=", self.localWriteACode.prettyPrint()
 
-        print "grb=", self.globalReadB.middle.prettyPrint()
-        print "lwb=", self.localWriteCodeB.prettyPrint()
+        print "grb=", self.globalReadBCode.middle.prettyPrint()
+        print "lwb=", self.localWriteBCode.prettyPrint()
       if schedDb & 0x1:
         print "makeSchedule-lw: writesToSched=", writesToSched, "lastLoadIter=", lastLoadIter, \
               "startIter=", startIter, "localWriteEndIter=", localWriteEndIter
 
-      itemsToSched = self.localWriteCodeA.items() + self.localWriteCodeB.items()
-      readsToWait = len(self.localWriteCodeA.items()) + len(self.localWriteCodeB.items())
+      itemsToSched = self.localWriteACode.items() + self.localWriteBCode.items()
+      readsToWait = len(self.localWriteACode.items()) + len(self.localWriteBCode.items())
       if self.scheduleGlobalRead:
         # Number of write blocks should match number of reads.
         # Note for TLU=0 cases we will have multiple writes/load - but these are all in same write module
         # So number of moules should match:
         if not kernel["DirectToLdsA"]:
-          assert self.globalReadA.middle.countType(Code.GlobalReadInst) == \
-              len(self.localWriteCodeA.items())
+          assert self.globalReadACode.middle.countType(Code.GlobalReadInst) == \
+              len(self.localWriteACode.items())
         if not kernel["DirectToLdsB"]:
-          assert self.globalReadB.middle.countType(Code.GlobalReadInst) == \
-              len(self.localWriteCodeB.items())
+          assert self.globalReadBCode.middle.countType(Code.GlobalReadInst) == \
+              len(self.localWriteBCode.items())
       for u in range(startIter, localWriteEndIter+1):
         if u==(localWriteEndIter):
           itemPerIter = len(itemsToSched) # schedule all remaining activity
@@ -525,26 +530,26 @@ class KernelWriter:
 
       if self.enable["GlobalRead"]:
         # unrolled loop: global read A, B
-        self.globalReadA = self.globalReadDo(kernel, 1, tensorParametersA)
-        self.globalReadB = self.globalReadDo(kernel, 1, tensorParametersB)
+        self.globalReadACode = self.globalReadDo(kernel, 1, tensorParametersA)
+        self.globalReadBCode = self.globalReadDo(kernel, 1, tensorParametersB)
       else:
-        self.globalReadA = Code.Item() # empty
-        self.globalReadB = Code.Item() # empty
+        self.globalReadACode = Code.Item() # empty
+        self.globalReadBCode = Code.Item() # empty
 
       if self.enable["GlobalReadInc"]:
         # unrolled loop: increment global read addresses
-        self.globalReadIncA = self.globalReadIncrement(kernel, self.unrollIdx, tensorParametersA, 0)
-        self.globalReadIncB = self.globalReadIncrement(kernel, self.unrollIdx, tensorParametersB, 0)
+        self.globalReadIncACode = self.globalReadIncrement(kernel, self.unrollIdx, tensorParametersA, 0)
+        self.globalReadIncBCode = self.globalReadIncrement(kernel, self.unrollIdx, tensorParametersB, 0)
       else:
-        self.globalReadIncA = Code.Item()
-        self.globalReadIncB = Code.Item()
+        self.globalReadIncACode = Code.Item()
+        self.globalReadIncBCode = Code.Item()
 
       if self.enable["LocalWrite"]:
-        self.localWriteCodeA = self.localWriteDo(kernel, tensorParametersA)
-        self.localWriteCodeB = self.localWriteDo(kernel, tensorParametersB)
+        self.localWriteACode = self.localWriteDo(kernel, tensorParametersA)
+        self.localWriteBCode = self.localWriteDo(kernel, tensorParametersB)
       else:
-        self.localWriteCodeA = ""
-        self.localWriteCodeB = ""
+        self.localWriteACode = ""
+        self.localWriteBCode = ""
 
       # which iteration to perform the local writes
       # if scheduleLocalWrite=0, all local writes performed in this iteration
@@ -649,8 +654,8 @@ class KernelWriter:
               if oldSched:
                 if self.enable["Wait"]:
                   kl.append(self.wait(kernel, tensorParametersA, tensorParametersB, 0, -1, -1, "4wait for global read"))
-                kl.append(self.localWriteCodeA) # remove me, this should come from scheduler
-                kl.append(self.localWriteCodeB) # remove me, this should come from scheduler
+                kl.append(self.localWriteACode) # remove me, this should come from scheduler
+                kl.append(self.localWriteBCode) # remove me, this should come from scheduler
 
               # local write for next iter, used to have local writes here
               kl.append(self.comment("local write swap offsets a"))
