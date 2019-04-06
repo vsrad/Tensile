@@ -1262,7 +1262,7 @@ class KernelWriterAssembly(KernelWriter):
       self.defineSgpr("WorkGroup0", 1)
 
     for i in range(2, kernel["ProblemType"]["NumIndicesC"]):
-      if 1 or not isPackedIndex(kernel,i): # TODO-packed - enable this check - we don't need WG in packed cases
+      if not isPackedIndex(kernel,i):
         self.defineSgpr("WorkGroup%u"%i, 1)
 
     self.lastUserSgprPlus1=self.sgprIdx  # For initSgpr, this is one past the past user sgpr
@@ -1307,6 +1307,10 @@ class KernelWriterAssembly(KernelWriter):
     for idxChar in kernel["PackedC1Indices"][:-1]:
       self.defineSgpr("MagicNumberSize%s"%idxChar, 1)
       self.defineSgpr("MagicShiftSize%s"%idxChar, 1)
+    if kernel["PackedC0Indices"] > 1:
+      self.defineSgpr("PackedSizes0", 1)
+    if kernel["PackedC1Indices"] > 1:
+      self.defineSgpr("PackedSizes1", 1)
 
     self.defineSgpr("LoopCounters", numSgprLoopCounters)
     self.defineSgpr("OrigLoopCounter", 1)
@@ -2297,8 +2301,6 @@ class KernelWriterAssembly(KernelWriter):
           "wait for %u bytes of kern args" % self.kernArgOffset )
     else:
       kStr += ".if 0\n"
-
-    #kStr += self.bomb()
 
 
     ########################################
@@ -5634,6 +5636,10 @@ class KernelWriterAssembly(KernelWriter):
         kStr += inst("s_add_u32",  sgpr("SrdC+0"), sgpr("SrdC+0"), sgpr(tmpS0), "add lo to SRD")
         kStr += inst("s_addc_u32", sgpr("SrdC+1"), sgpr("SrdC+1"), sgpr(tmpS1), "add hi to SRD")
         kStr += "\n"
+
+    if kernel["PackedC0Indices"] > 1:
+      for idxChar in kernel["PackedC0Indices"][:-1]:
+        kStr += inst("","mul by size%s"%idxChar)
 
     return kStr
 
