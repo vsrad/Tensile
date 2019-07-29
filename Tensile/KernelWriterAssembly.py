@@ -4490,18 +4490,25 @@ class KernelWriterAssembly(KernelWriter):
                   self.size('A', sumDim), "")
         kStr += inst("s_mul_i32", sgpr(tmpSgpr), sgpr(tmpSgpr), \
                   self.stride('A', sumDim), "elementEdgeAK")
-        kStr += inst("s_add_u32", sgpr(tmpSgpr), \
+        kStr += inst("s_add_u32", sgpr(tmpSgpr+1), \
                   sgpr("ZeroPad%s%s_Leading"%(tc, freeDimChar)), \
                   sgpr("ZeroPad%s%s_Trailing"%(tc, freeDimChar)), \
                   "sum pads")
-        kStr += inst("s_add_u32", sgpr(tmpSgpr+1), \
-                      sgpr(tmpSgpr+1), 1, "")
+        # Add one, and also account for srdLeft shifting (so ElementEdge needs to be a little bigger)
+        inc = self.srdShiftLeft[tc] - 1
+        if inc:
+            kStr += inst("s_add_u32", sgpr(tmpSgpr+1), \
+                          sgpr(tmpSgpr+1), inc, "")
         kStr += inst("s_mul_i32", sgpr(tmpSgpr+1), \
                   sgpr(tmpSgpr+1), \
                   self.stride('A', freeDim), "scale")
         kStr += inst("s_sub_u32", sgpr("ElementEdge%s%s"%(tc, sumDimChar)), \
                   sgpr(tmpSgpr), sgpr(tmpSgpr+1), "Final elementEdge calc")
-        kStr += inst("s_lshl_b32", sgpr(tmpSgpr), sgpr(tmpSgpr), log2(self.bpeAB), "scale by bpe")
+        kStr += inst("s_lshl_b32", \
+                  sgpr("ElementEdge%s%s"%(tc, sumDimChar)), \
+                  sgpr("ElementEdge%s%s"%(tc, sumDimChar)), \
+                  log2(self.bpeAB), "scale by bpe")
+        #kStr += self.bomb(5)
 
     return kStr
 
@@ -5418,11 +5425,9 @@ class KernelWriterAssembly(KernelWriter):
       loopIdx = problemType["IndicesSummation"].index(sumDim)
       # TODO - fix for GSU, need LOCAL_DEPTHU*GSU?
       imod.header.addInst("s_mul_i32", sgpr(zpTmp), sgpr("LoopCounters+%u"%loopIdx), "DepthU", "compute elementCounter%s, step1"%(sumChar))
-      imod.header.addInst("s_sub_u32", sgpr(zpTmp), self.size(tc,freeDim), sgpr(zpTmp), "compute elementCounter%s, step2"%(sumChar))
+      imod.header.addInst("s_sub_u32", sgpr(zpTmp), self.size(tc,sumDim), sgpr(zpTmp), "compute elementCounter%s, step2"%(sumChar))
       imod.header.addInst("s_mul_i32", sgpr(zpTmp), self.stride(tc,freeDim), sgpr(zpTmp), "scale by stride")
       imod.header.addInst("s_lshl_b32", sgpr(zpTmp), sgpr(zpTmp), log2(self.bpeAB), "scale by bpe")
-
-
 
     if tP["isA"] and (kernel["DirectToLdsA"] or kernel["DirectToLdsB"]):
       imod.header.addText(self.comment1("before DirectToLds load, ensure prior ds_reads have finished"))
@@ -5488,7 +5493,7 @@ class KernelWriterAssembly(KernelWriter):
                 loadModule.addInst("_v_add_u32", vgpr(addrV), vgpr(offsetVgpr), sgpr(zpTmp), "GRO += scaled elements")
                 loadModule.addInst("v_cmp_ge_u32", "vcc", vgpr(addrV), sgpr("ElementEdge%s%s"%(tc,sumChar)), "is in the pad region?")
                 loadModule.addInst("v_cndmask_b32", vgpr(addrV), vgpr(offsetVgpr), -1, "vcc", "Set addresses in pad to large OOB value")
-                loadModule.addText(self.bomb())
+                #loadModule.addText(self.bomb())
                 assert (i==0) # need to and/combine multiple compares here
                 offsetVgpr = addrV # replace offsetvgpr
 
