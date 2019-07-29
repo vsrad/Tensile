@@ -1,0 +1,186 @@
+
+################################################################################
+#
+#  Tensile v4.10.0
+# Restoring default globalParameters
+#  Config: /home/bensander/X/TENSILE/repo.New/Tensile/Tests/zeropad/test_zeropad_simple_0x1.yaml
+#
+################################################################################
+
+# Restoring default globalParameters
+# Detected local GPU with ISA: gfx900
+# Detected local GPU with ISA: gfx900
+# Detected local GPU with ISA: gfx900
+# Asm caps for gfx803: HasExplicitCO=0 HasSMulHi=0 SupportedISA=1 HasDirectToLds=1 MaxVmcnt=15 HasCodeObjectV3=0 HasAddLshl=0
+# Arch caps for gfx803:{'HasEccHalf': False}
+# Asm caps for gfx900: HasExplicitCO=1 HasSMulHi=1 SupportedISA=1 HasDirectToLds=1 MaxVmcnt=63 HasCodeObjectV3=0 HasAddLshl=1
+# Arch caps for gfx900:{'HasEccHalf': False}
+# Asm caps for gfx906: HasExplicitCO=1 HasSMulHi=1 SupportedISA=1 HasDirectToLds=1 MaxVmcnt=63 HasCodeObjectV3=0 HasAddLshl=1
+# Arch caps for gfx906:{'HasEccHalf': True}
+# Asm caps for gfx000: HasExplicitCO=0 HasSMulHi=0 SupportedISA=0 HasDirectToLds=0 MaxVmcnt=0 HasCodeObjectV3=0 HasAddLshl=0
+# Arch caps for gfx000:{'HasEccHalf': False}
+
+
+################################################################################
+# Converting Config to BenchmarkProcess Object
+################################################################################
+
+# Filling in Parameters With Defaults
+# Convert Parameters to Steps
+# Benchmark Common Parameters
+# Fork Parameters
+# Benchmark Fork Parameters
+# Join Parameters
+# Benchmark Join Parameters
+# Benchmark Final
+# NumBenchmarkSteps: 1
+
+################################################################################
+# Done Creating BenchmarkProcess Object
+################################################################################
+# Empty winners - use fast initialization of hardcodedParameters
+
+
+################################################################################
+# BenchmarkStep: Cij_Aik_Bkj_S_00 - 00_Final 1.518s
+# NumProblems: 1
+# BenchmarkParameters:
+# MaxPossibleSolutions: 1 = 1 (hardcoded) * 1 (benchmark)
+# Enumerating Solutions
+[|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 100% (0.0 secs elapsed)
+# Populating initial winners (1 solutions)
+
+# Actual Solutions: 1 / 1
+
+# Writing Kernels...
+|*
+1
+# Kernel Building elapsed time = 0.0 secs
+# Writing Solutions
+[|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 100% (0.0 secs elapsed)
+# Writing Custom CMake
+# Copying files that differ from sourceTmp -> source
+
+################################################################################
+# Configuring CMake for Client
+################################################################################
+-- Tensile_CODE_OBJECT_VERSION from Tensile/Source/CMakeLists.txt: V2
+-- Making BenchmarkClient
+-- ENV HIP_PATH = /opt/rocm/include
+-- HIPCC = /opt/rocm/bin/hipcc
+-- HCC_FOUND = TRUE
+-- HCC = /opt/rocm/bin/hcc
+-- HCC_INCLUDE_DIRS = /opt/rocm/include/hcc
+-- HSA_LIBRARIES = /opt/rocm/lib/libhsa-runtime64.so
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/bensander/X/TENSILE/repo.New/X6/1_BenchmarkProblems/Cij_Aik_Bkj_S_00/00_Final/build
+
+################################################################################
+# Building Client
+################################################################################
+[100%] Built target client
+################################################################################
+# Device[0]: Device 6860 (gfx900)
+# Compute:   12288 GFlop/s (64 CUs @ 1500 MHz)
+# Bandwidth: 483 GB/s (2048-bit @ 945 MHz)
+################################################################################
+Tensile Client Columns: GFlops (clock-normalized), GFlops (raw), SolName, KernelMs, Valid/Total, CoreMhz, MemMhz, TempC, FanSpeed, Idx/Total, TimeStamp
+Initializing 362 MBytes................
+
+
+Problem[0/1]: 16, 8, 4
+Matrix:A  indexAssignments:2(sum), 0(free)
+  size[1]=4 (sum),'K'
+  size[0]=16 (free),'I'
+  elementStrides[1]=16
+  elementStrides[0]=1
+  memoryStrides[1]=16
+  memoryStrides[0]=1
+
+  K,I
+0,x : [   1  1  1  1  1  1  1  1  1  1  1  1  1  1  1  1]
+1,x : [   1  1  1  1  1  1  1  1  1  1  1  1  1  1  1  1]
+2,x : [   1  1  1  1  1  1  1  1  1  1  1  1  1  1  1  1]
+3,x : [   1  1  1  1  1  1  1  1  1  1  1  1  1  1  1  1]
+
+Matrix:B  indexAssignments:1(free), 2(sum)
+  size[1]=8 (free),'J'
+  size[0]=4 (sum),'K'
+  elementStrides[1]=4
+  elementStrides[0]=1
+  memoryStrides[1]=4
+  memoryStrides[0]=1
+
+  J,K
+0,x : [   1  1  1  1]
+1,x : [   1  1  1  1]
+2,x : [   1  1  1  1]
+3,x : [   1  1  1  1]
+4,x : [   1  1  1  1]
+5,x : [   1  1  1  1]
+6,x : [   1  1  1  1]
+7,x : [   1  1  1  1]
+
+Cij_Aik_Bkj_S_MT64x64x4_SE_K1: g{ 1, 1, 1 } l{ 64, 1, 1}
+  strideD1J = 16
+  strideC1J = 16
+  strideA1K = 1
+  strideB1J = 4
+  sizes[kernelIdx][enqueueIdx][0] = 16
+  sizes[kernelIdx][enqueueIdx][1] = 8
+  sizes[kernelIdx][enqueueIdx][2] = 4
+  staggerUIter == 0
+  problemNumGroupTiles0== 1
+  problemNumGroupTiles1== 1
+  tensor2dSizeC== 128
+  tensor2dSizeA== 64
+  tensor2dSizeB== 32
+  magicNumberProblemNumGroupTiles0==2147483649
+Matrix:D_out  indexAssignments:1(free), 0(free)
+  size[1]=8 (free),'J'
+  size[0]=16 (free),'I'
+  elementStrides[1]=16
+  elementStrides[0]=1
+  memoryStrides[1]=16
+  memoryStrides[0]=1
+
+  J,I
+0,x : [   4  4  4  4  4  4  4  4  4  4  4  4  4  4  3  2]
+1,x : [   4  4  4  4  4  4  4  4  4  4  4  4  4  4  3  2]
+2,x : [   4  4  4  4  4  4  4  4  4  4  4  4  4  4  3  2]
+3,x : [   4  4  4  4  4  4  4  4  4  4  4  4  4  4  3  2]
+4,x : [   4  4  4  4  4  4  4  4  4  4  4  4  4  4  3  2]
+5,x : [   4  4  4  4  4  4  4  4  4  4  4  4  4  4  3  2]
+6,x : [   4  4  4  4  4  4  4  4  4  4  4  4  4  4  3  2]
+7,x : [   4  4  4  4  4  4  4  4  4  4  4  4  4  4  3  2]
+
+Cij_Aik_Bkj_S_MT64x64x4_SE_K1: g{ 1, 1, 1 } l{ 64, 1, 1}
+  strideD1J = 16
+  strideC1J = 16
+  strideA1K = 1
+  strideB1J = 4
+  sizes[kernelIdx][enqueueIdx][0] = 16
+  sizes[kernelIdx][enqueueIdx][1] = 8
+  sizes[kernelIdx][enqueueIdx][2] = 4
+  staggerUIter == 0
+  problemNumGroupTiles0== 1
+  problemNumGroupTiles1== 1
+  tensor2dSizeC== 128
+  tensor2dSizeA== 64
+  tensor2dSizeB== 32
+  magicNumberProblemNumGroupTiles0==2147483649
+     0.033,      0.033, Cij_Aik_Bkj_S_MT64x64x4_SE_*,     0.031, PASSED: 1/1, 1138, 800, 33.000, 0, 0/1, 2019-07-28 03:29:45.710627, 
+
+Run kernels elapsed gpu_time:0.000 secs  total_time:0.001 secs 3.99% gpu utilization
+
+Fastest: 0.03 GFlop/s 31.11 us by (0) Cij_Aik_Bkj_S_MT64x64x4_SE_
+# Adding Results to Solution Database
+[|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||] 100% (0.0 secs elapsed)
+################################################################################
+# Cij_Aik_Bkj_S_00
+# 00_Final: End - 3.086s
+################################################################################
+
+clientExit=0 (PASS) for /home/bensander/X/TENSILE/repo.New/Tensile/Tests/zeropad/test_zeropad_simple_0x1.yaml
+
