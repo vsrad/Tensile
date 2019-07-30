@@ -2529,92 +2529,105 @@ class KernelWriterAssembly(KernelWriter):
             kStr += " sgprOffset%s" % idxChars[i]
       kStr += " vgprTmp%s" % self.endLine
 
-
       # d1+
-      needAdd = 0
-      offset = None
+      # Each index may be skipped, scaled by stride, or unscaled
+      # If destLo is unset, no accumulation is necessary.
+
+      # if the first index (i==0) is unscaled (UseInitialStrides), 
+      # it can be combined at the next update or moved at end 
+      # (if there is no next update)
+
+      offset = None # this is VGPR or SGPR string to use for the offset
+      pendingOffset = None # offset pending for accumulation
+      offsetIsVgpr = False # True if the source is VGPR ; False if SGPR
+      destLo = None
       for i in range(0, numDim):
         if indices[i] in kernel["ProblemType"]["IndicesSummation"] and \
              not indices[i] == kernel["ProblemType"]["IndexUnroll"]:
           # other summation, these are always 0 and don't contribute to GLOBAL_OFFSET
           continue
 
-        if offset == None:
-          ########################################
-          # index 0
-          # tile index or unroll vgpr
-          if indices[i] == kernel["ProblemType"]["Index0"] \
-              or indices[i] == kernel["ProblemType"]["Index1"] \
-              or indices[i] == kernel["ProblemType"]["IndexUnroll"]:
-            offset = "v[\\vgprOffset%s]" % idxChars[i]
-          # other c index sgpr (free or batch)
-          elif indices[i] < kernel["ProblemType"]["NumIndicesC"]:
-            if isPackedIndex(kernel, indices[i], packBatchDims):
-              offset = "s[\\vgprOffset%s]" % idxChars[i]
-            else:
-              offset = "s[\\sgprOffset%s]" % idxChars[i]
-          continue
 
-        # tile index or unroll vgpr
         if indices[i] == kernel["ProblemType"]["Index0"] \
             or indices[i] == kernel["ProblemType"]["Index1"] \
             or indices[i] == kernel["ProblemType"]["IndexUnroll"]:
-          # offset * stride
-          kStr += inst("v_mul_lo_u32", \
-              "v[\\vgprTmp+0]", \
-              self.stride(tensorChar, indices[i]), \
-              "v[\\vgprOffset%s]" % idxChars[i],  \
-              "mul d%u lower"%i)
-          if not justOffset32:
-            kStr += inst("v_mul_hi_u32", \
-                "v[\\vgprTmp+1]", \
-                self.stride(tensorChar, indices[i]), \
-                "v[\\vgprOffset%s]" % idxChars[i],  \
-                "mul d%u upper"%i)
-          needAdd = 1
-        # other c index sgpr
+          offsetIsVgpr = True
+        # other c index sgpr (free or batch)
         elif indices[i] < kernel["ProblemType"]["NumIndicesC"]:
           if isPackedIndex(kernel, indices[i], packBatchDims):
-            assert (justOffset32) # packed only supported for buffer addressing
+            offsetIsVgpr = True
+          else:
+            offsetIsVgpr = False
+        else:
+          assert(0) # no other type allowed
+
+        if offsetIsVgpr:
+          offset = "v[\\vgprOffset%s]" % idxChars[i]
+        else:
+          offset = "s[\\sgprOffset%s]" % idxChars[i]
+
+        #kStr += self.comment1("dim%s pendingOffset=%s offset=%s offsetIsVgpr=%s" \
+        #    % (self.indexChars[indices[i]], pendingOffset, offset, offsetIsVgpr))
+
+        needAdd = 0 # if 1, index writes a temp that must be accumulated
+        if i==0 and not kernel["ProblemType"]["UseInitialStrides"]:
+          pendingOffset = offset
+          needAdd = 0 # skip the accumulate, pick up on next round
+        else:
+          # tile index or unroll vgpr
+          if offsetIsVgpr:
+            # offset * stride
             kStr += inst("v_mul_lo_u32", \
                 "v[\\vgprTmp+0]", \
                 self.stride(tensorChar, indices[i]), \
                 "v[\\vgprOffset%s]" % idxChars[i],  \
                 "mul d%u lower"%i)
-            needAdd = 1
-          elif not justOffset32: # buffer mode (aka justOffset32) does scalars into SRD not offset
-            kStr += inst("v_mov_b32", \
-                "v[\\vgprTmp+2]", \
-                "s[\\sgprOffset%s]"%idxChars[i], \
-                "sgprOffset -> vgprTmp+2")
-            # offset * stride
-            kStr += inst("v_mul_lo_u32", \
-                "v[\\vgprTmp+0]", \
-                self.stride(tensorChar, indices[i]), \
-                "v[\\vgprTmp+2]",  \
-                "other stride mul d%u lower"%i)
             if not justOffset32:
+              kStr += inst("v_mul_hi_u32", \
+                  "v[\\vgprTmp+1]", \
+                  self.stride(tensorChar, indices[i]), \
+                  "v[\\vgprOffset%s]" % idxChars[i],  \
+                  "mul d%u upper"%i)
+            needAdd = 1
+          else: # offset is SGPR:
+            if not justOffset32: 
+              # buffer mode (aka justOffset32) does scalars into SRD not offset
+              kStr += inst("v_mov_b32", \
+                  "v[\\vgprTmp+2]", \
+                  "s[\\sgprOffset%s]"%idxChars[i], \
+                  "sgprOffset -> vgprTmp+2")
+              # offset * stride
+              kStr += inst("v_mul_lo_u32", \
+                  "v[\\vgprTmp+0]", \
+                  self.stride(tensorChar, indices[i]), \
+                  "v[\\vgprTmp+2]",  \
+                  "other stride mul d%u lower"%i)
               kStr += inst("v_mul_hi_u32", \
                   "v[\\vgprTmp+1]", \
                   self.stride(tensorChar, indices[i]), \
                   "v[\\vgprTmp+2]",  \
                   "mul d%u upper"%i)
-            needAdd = 1
-          else:
-            needAdd = 0
-        # other sum index
-        else:
-          needAdd = 0
-          continue
+              needAdd = 1
 
-        destLo = "v[\\vgprAddr+0]"
         if needAdd:
+          destLo = "v[\\vgprAddr+0]"
           # addr += offset * stride (lo) : accumulate just-computed address term into addr
-          kStr += inst("_v_add_co_u32", \
+
+          if pendingOffset:
+            kStr += inst("_v_add_co_u32", \
               destLo, \
               "vcc", \
               "v[\\vgprTmp+0]", \
-              offset, \
+              pendingOffset, \
+              "accumulate d%u lower"%i)
+              #"accumulate d%u lower + pending(%s)"%(i,pendingOffset))
+            pendingOffset = None
+          else:
+            kStr += inst("_v_add_co_u32", \
+              destLo, \
+              "vcc", \
+              "v[\\vgprTmp+0]", \
+              destLo, \
               "accumulate d%u lower"%i)
           # addr += offset * stride (hi)
           if not justOffset32:
@@ -2625,15 +2638,15 @@ class KernelWriterAssembly(KernelWriter):
                 0, \
                 "vcc", \
                 "accumulate d%u upper"%i)
-        else:
-          if destLo != offset and offset != None:
-            kStr += inst("v_mov_b32", destLo, offset, "setup d0 lower")
-          if not justOffset32:
-            kStr += inst("v_mov_b32", "v[\\vgprAddr+1]", hex(0), "d0 upper")
 
+      # pendingOffset but never got a chance to apply it,
+      # need to just add an explicit move.
+      # this can happen for small-order tensors
+      if pendingOffset != None:
+        kStr += inst("v_mov_b32", destLo, offset, "setup d0 lower")
+        if not justOffset32:
+          kStr += inst("v_mov_b32", "v[\\vgprAddr+1]", hex(0), "d0 upper")
 
-        # Change offset for subsequent dims (if needed)
-        offset = destLo
 
       if tP != None and kernel["BufferLoad"] and self.srdShiftLeft[tensorChar]:
         kStr += inst("_v_add_co_u32", \
@@ -2642,7 +2655,6 @@ class KernelWriterAssembly(KernelWriter):
             hex(self.srdShiftLeft[tensorChar]), \
             "v[\\vgprAddr+0]", \
             "add prepad for pointer shift")
-
 
       # addr *= bytes/element
       if justOffset32:
@@ -4494,7 +4506,7 @@ class KernelWriterAssembly(KernelWriter):
                   sgpr("ZeroPad%s%s_Leading"%(tc, freeDimChar)), \
                   sgpr("ZeroPad%s%s_Trailing"%(tc, freeDimChar)), \
                   "sum pads")
-        # Add one, and also account for srdLeft shifting (so ElementEdge needs to be a little bigger)
+        # Add one the the threshold, and also account for srdLeft shifting (so ElementEdge needs to be a little bigger)
         inc = self.srdShiftLeft[tc] - 1
         if inc:
             kStr += inst("s_add_u32", sgpr(tmpSgpr+1), \
