@@ -323,15 +323,11 @@ class Solution:
     def FromOriginalState(cls, d, deviceInfo=None):
         rv = cls()
 
-        rv.originalSolution = OriginalSolution(d)
 
         if 'SolutionNameMin' in d:
             rv.name = d['SolutionNameMin']
 
         rv.problemType = ProblemType.FromOriginalState(d['ProblemType'])
-
-        # hacky, can just construct Convolution yet again?
-        rv.problemType.convolution = rv.originalSolution["ProblemType"].convolution
 
         rv.problemPredicate = ProblemPredicate.FromOriginalState(d, rv.problemType)
 
@@ -357,6 +353,9 @@ class Solution:
         else:
             d['ISA'] = [0,0,0]
 
+        rv.originalSolution = OriginalSolution(d)
+        # hacky, can just construct Convolution yet again?
+        rv.problemType.convolution = rv.originalSolution["ProblemType"].convolution
 
         return rv
 
