@@ -112,8 +112,17 @@ namespace Tensile
                     copyInputs(m_cpuInputs, m_cpuInputsPristine);
                 }
 
+                if (m_convolutionVsContraction and !m_cpuConvInputs) {
+                  m_cpuConvInputs = allocNewCPUInputs(m_cpuInputsPristine, true);
+                  initializeCPUInputs(*m_cpuConvInputs);
+                }
+
                 return m_cpuInputs;
             }
+
+            virtual std::shared_ptr<ContractionInputs> cpuConvInputs() const {
+              return m_cpuConvInputs;
+            };
 
             std::shared_ptr<ManagedInputs> prepareGPUInputsTyped()
             {
@@ -169,7 +178,7 @@ namespace Tensile
                 return rv;
             }
 
-            std::shared_ptr<ManagedInputs> allocNewCPUInputs(std::shared_ptr<ManagedInputs> pristine = nullptr)
+            std::shared_ptr<ManagedInputs> allocNewCPUInputs(std::shared_ptr<ManagedInputs> pristine = nullptr, bool convolutionVsContraction=false)
             {
                 std::shared_ptr<AType> a;
                 std::shared_ptr<BType> b;
@@ -187,7 +196,7 @@ namespace Tensile
                     b = std::shared_ptr<BType>((BType *)std::malloc(TypeInfo<BType>::ElementSize * m_bMaxElements), std::free);
                 }
 
-                if(m_cEqualsD || !pristine)
+                if(m_cEqualsD || !pristine || convolutionVsContraction)
                 {
                     c = std::shared_ptr<CType>((CType *)std::malloc(TypeInfo<CType>::ElementSize * m_cMaxElements), std::free);
                 }
@@ -345,6 +354,7 @@ namespace Tensile
 
         private:
 
+            std::shared_ptr<ManagedInputs> m_cpuConvInputs;
             std::shared_ptr<ManagedInputs> m_cpuInputs, m_cpuInputsPristine;
             std::shared_ptr<ManagedInputs> m_gpuInputs, m_gpuInputsPristine;
 

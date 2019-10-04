@@ -179,7 +179,8 @@ namespace Tensile
               m_bMaxElements(0),
               m_cMaxElements(0),
               m_dMaxElements(0),
-              m_cEqualsD(args["c-equal-d"].as<bool>())
+              m_cEqualsD(args["c-equal-d"].as<bool>()),
+              m_convolutionVsContraction(args["convolution-vs-contraction"].as<bool>())
         {
             for(auto const& problem: problemFactory.problems())
             {
