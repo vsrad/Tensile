@@ -114,6 +114,7 @@ namespace Tensile
         void FromIdentifier(std::string identifier);
         void validate(const ContractionProblem &problem) const;
 
+        const std::vector<size_t> spatials() const { return m_spatials;};
         const std::vector<size_t> filter() const { return m_filters;};
         const std::vector<size_t> stride() const { return m_strides;};
         const std::vector<size_t> dilation() const { return m_dilations;};
@@ -134,6 +135,7 @@ namespace Tensile
         std::string m_operationIdentifier; // ConvolutionForward, ConvolutionBackwardData, ConvolutionBackwardWeights
 
         // 0,1,2 order is W,H,D(act) or X,Y,Z(weights)
+        std::vector<size_t> m_spatials;
         std::vector<size_t> m_filters;
         std::vector<size_t> m_strides;
         std::vector<size_t> m_dilations;
