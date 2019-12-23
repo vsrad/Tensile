@@ -2559,6 +2559,8 @@ for codeObjectFileName in codeObjectFileNames:
     objectFileName = base + '.o'
 
     args = self.getCompileArgs(assemblyFileName, objectFileName)
+    if globalParameters["PrintCodeCommands"]:
+      print (' '.join(args), " && ")
     subprocess.check_call(args, cwd=self.getAssemblyDirectory())
 
     return objectFileName
@@ -2570,6 +2572,8 @@ for codeObjectFileName in codeObjectFileNames:
     coFileName = base + '.co'
 
     args = self.getLinkCodeObjectArgs([objectFileName], coFileName)
+    if globalParameters["PrintCodeCommands"]:
+      print (' '.join(args))
     subprocess.check_call(args, cwd=self.getAssemblyDirectory())
 
     return coFileName
