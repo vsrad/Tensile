@@ -174,6 +174,9 @@ def buildSourceCodeObjectFile(CxxCompiler, outputPath, kernelFile):
 
     extractedCOs = [os.path.join(buildPath, name) for name in coFilenames]
     destCOs = [os.path.join(destDir, name) for name in coFilenames]
+    if globalParameters["PrintCodeCommands"]:
+      print ("# copy source code objects    : ", extractedCOs)
+      print ("# to dest source code objects : ", destCOs)
 
     for (src, dst) in zip(extractedCOs, destCOs):
         shutil.copyfile(src, dst)
