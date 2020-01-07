@@ -306,6 +306,7 @@ class SizeMapping:
                  'staggerStrideShift',
                  'workGroupMapping',
                  'packBatchDims',
+                 'magicDivAlg',
                  'persistentKernel',
                  'sourceKernel',
                  ]
@@ -322,6 +323,7 @@ class SizeMapping:
                    staggerStrideShift = d['_staggerStrideShift'] if '_staggerStrideShift' in d else 0,
                    packBatchDims      = d['PackBatchDims'] if 'PackBatchDims' in d else 0,
                    persistentKernel   = d['PersistentKernel'] if 'PersistentKernel' in d else 0,
+                   magicDivAlg        = d.get('MagicDivAlg', 1),
                    sourceKernel       = d['KernelLanguage'] == 'Source',
                    )
 
