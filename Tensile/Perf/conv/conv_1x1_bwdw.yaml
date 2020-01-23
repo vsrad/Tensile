@@ -7,13 +7,11 @@ GlobalParameters:
   SleepPercent: 0
   DataInitTypeA: 0
   DataInitTypeB: 0
-  DataInitTypeAlpha: 1
   EnqueuesPerSync: 100
   KernelTime: True
   NewClient: 2
-  PrintConvolutionUsage: 1
+  PrintConvolutionUsage: 0
   PrintSolutionRejectionReason: 0
-  ProblemFromConvolution: 1
 
 BenchmarkProblems:
   -
@@ -23,9 +21,9 @@ BenchmarkProblems:
       ConvolutionConfig:
       - Dilation: 1x1
       - Filter: 1x1
-      - Stride: 2x2
+      - Stride: 1x1
       - TensorAFormat: NCHW
-      - UnrollOnChannel: 1
+      - UnrollOnChannel: 0
 
     - # BenchmarkProblemSizeGroup - Standard
       InitialSolutionParameters:
@@ -36,7 +34,7 @@ BenchmarkProblems:
         - PrefetchGlobalRead: [1]
         - PrefetchLocalRead: [0,1]
         - ThreadTile:
-          - [ 4, 4 ]
+          #- [ 4, 4 ]
           - [ 8, 4 ]
           - [ 4, 8 ]
           - [ 8, 8 ]
@@ -45,26 +43,33 @@ BenchmarkProblems:
           - [ 8, 16, 1 ]
           - [ 8, 32, 1 ]
           #- GlobalSplitU: [1,2,4,6,8,12,32]
-        - GlobalSplitU: [2,8,12]
-        - DepthU: [4,8]
-        - GlobalReadVectorWidth: [1,-1]
+        - GlobalSplitU: [6,12,32,48]
+        - DepthU: [8,16]
+        - GlobalReadVectorWidth: [-1]
         - StaggerU: [0,32]
           #- WorkGroupMapping: [1,8,64]
         - VectorWidth: [4]
         - FractionalLoad: [0,1]
         - PackBatchDims: [1] # must be one for AllowNoFreeDims
-        - VectorStore: [0]
+          #- AssertFree0ElementMultiple: [4]
+          #- VectorStore: [0]
       BenchmarkForkParameters:
       BenchmarkJoinParameters:
       BenchmarkFinalParameters:
-        - ProblemSizes:
-          - Exact: [ 256, 512, 56, 56, 64]
-# resnet stride2:
-#./bin/MIOpenDriver conv -n 64 -c 256 -H 56 -W 56 -k 512 -y 1 -x 1 -p 0 -q 0 -u 2 -v 2 -l 1 -j 1 -t 1 -V 0
+        - ProblemSizes: # C, K, H*W, N
+          - Exact: [64, 256, 64, 3136]  #conv -n 64 -c 64 -H 56 -W 56 -k 256 -y 1 -x 1 -p 0 -q 0 -u 1 -v 1 -l 1 -j 1
+            #- Exact: [64, 256, 3136, 64]  #conv -n 64 -c 64 -H 56 -W 56 -k 256 -y 1 -x 1 -p 0 -q 0 -u 1 -v 1 -l 1 -j 1
 
+#   Tensile    : ConvChar: Explanation/Usage
+# UnrollOnChannel=1
 #  0('I') Batch:     'C' : Cin.  sizeI=Cin. [strideB:0]
 #  1('J') Free :     'K' : Cout. sizeJ=Cout.
-#  2('K') Sum  :     'H' : Spatial H. sizeK=H_o strideAK=W_in*strideH(2).
-#  3('L') Sum  :     'W' : Spatial W. sizeL=W_o strideAL=strideW(2). [strideA:1] [strideB:1]
-#  4('M') Sum  :     'N' : Minibatch dimension. sizeM=N.
-
+#  2('K') Sum  :    'HW' : Spatially packed HW. sizeK=H_o*W_o. strideAK=strideW(1). [strideA:1] [strideB:1]
+#  3('L') Sum  :     'N' : Minibatch dimension. sizeL=N.
+#
+# UnrollOnChannel=0
+#  0('I') Batch:     'C' : Cin.  sizeI=Cin. [strideB:0]
+#  1('J') Free :     'K' : Cout. sizeJ=Cout.
+#  2('K') Sum  :     'N' : Minibatch dimension. sizeK=N.
+#  3('L') Sum  :    'HW' : Spatially packed HW. sizeL=H_o*W_o. strideAL=strideW(1). [strideA:1] [strideB:1]
+#

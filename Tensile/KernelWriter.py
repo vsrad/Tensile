@@ -2569,7 +2569,7 @@ for codeObjectFileName in codeObjectFileNames:
     if globalParameters["CodeObjectVersion"] == "V3": REPLACEMENT_KERNEL_ROOT += "-cov3"
     REPLACEMENT_KERNEL_PATH = os.path.join(REPLACEMENT_KERNEL_ROOT, kernelFileName_txt)
 
-    print("Looking for replacement: {}".format(REPLACEMENT_KERNEL_PATH))
+    #print("Looking for replacement: {}".format(REPLACEMENT_KERNEL_PATH))
     if os.path.isfile(REPLACEMENT_KERNEL_PATH) and kernel["ReplacementKernel"]:
       return REPLACEMENT_KERNEL_PATH
 

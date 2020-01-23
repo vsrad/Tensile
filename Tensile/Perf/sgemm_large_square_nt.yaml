@@ -12,6 +12,7 @@ GlobalParameters:
   DataInitTypeAB: 0
   PrintSolutionRejectionReason: 1
   CEqualD: 1
+  NewClient: 1
 
 BenchmarkProblems:
   ########################################
@@ -29,9 +30,9 @@ BenchmarkProblems:
     - # BenchmarkProblemSizeGroup - Standard
       InitialSolutionParameters:
       BenchmarkCommonParameters:
-        - KernelLanguage: ["Assembly"]
         - EdgeType: ["ShiftPtr"]
       ForkParameters:
+        - KernelLanguage: ["Assembly","Source"]
         - PrefetchLocalRead: [True]
         - PrefetchGlobalRead: [True]
         - ThreadTile:
