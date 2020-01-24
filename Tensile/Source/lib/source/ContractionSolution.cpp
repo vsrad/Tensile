@@ -603,8 +603,10 @@ namespace Tensile
         }
     }
 
-    double ContractionSolution::projectedPerformance(Problem const& problem, Hardware const& hardware) const
+    ContractionSolution::ProjectedPerformance ContractionSolution::projectedPerformance(Problem const& problem, Hardware const& hardware) const
     {
+        ProjectedPerformance pp;
+
         double M = problem.freeSizeA(0);
         double N = problem.freeSizeB(0);
         double NumBatches = problem.batchSize(0);
@@ -633,29 +635,40 @@ namespace Tensile
         double MT1 = sizeMapping.macroTile.y;
         double NumCUs = 64;
 
-	AMDGPU const *pAMDGPU = dynamic_cast<AMDGPU const *>(&hardware);
-
+        AMDGPU const *pAMDGPU = dynamic_cast<AMDGPU const *>(&hardware);
         if (pAMDGPU != nullptr)
-        {                     //computeUnitCount
+        {
             NumCUs = pAMDGPU->computeUnitCount;
         }
 
-	double GlobalSplitU = sizeMapping.globalSplitU;
+        double GlobalSplitU = sizeMapping.globalSplitU;
         double LocalSplitU = sizeMapping.workGroupSize.z;
         double IdealGranularityPerf = closestKPerformance;
 
-        double Tiles0 = ceil(M / MT0);
-        double Tiles1 = ceil(N / MT1);
+        pp.numTiles0 = M / MT0;
+        pp.numTiles1 = N / MT1;
 
-        double TileGranularity0 = (M / MT0) / Tiles0;
-        double TileGranularity1 = (N / MT1) / Tiles1;
+        pp.tilesPerCu = (NumBatches * ceil(pp.numTiles0) * ceil(pp.numTiles1)) /
+                          (NumCUs / GlobalSplitU / LocalSplitU);
+        pp.tile0Granularity = pp.numTiles0/ceil(pp.numTiles0);
+        pp.tile1Granularity = pp.numTiles1/ceil(pp.numTiles1);
 
-        double TilesPerCu = (NumBatches * Tiles0 * Tiles1) / (NumCUs / GlobalSplitU / LocalSplitU);
-        double CuGranularity = TilesPerCu / ceil(TilesPerCu);
+        // approximation for now, to catch cases where WG is too small to fill SIMDs
+        // should include occupancy to determine how many waves in the group can fit
+        pp.waveGranularity = std::min(1.00,
+                                static_cast<double>(
+                                pp.tilesPerCu *
+                                sizeMapping.workGroupSize.x*
+                                sizeMapping.workGroupSize.y*
+                                sizeMapping.workGroupSize.z)
+                                / pAMDGPU->wavefrontSize / pAMDGPU->simdPerCu);
 
-        double projectedPerformance = IdealGranularityPerf * TileGranularity0 * TileGranularity1 * CuGranularity;
+        pp.cuGranularity = pp.tilesPerCu / ceil(pp.tilesPerCu);
+        pp.totalGranularity = pp.tile0Granularity * pp.tile1Granularity * pp.cuGranularity * pp.waveGranularity;
 
-        return projectedPerformance;
+        pp.speedGFlops = IdealGranularityPerf * pp.totalGranularity;
+
+        return pp;
     }
 
 }

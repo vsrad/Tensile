@@ -86,6 +86,9 @@ namespace Tensile
                                         {BenchmarkRunNumber, ProblemProgress, SolutionProgress,
                                          OperationIdentifier, ProblemSizes, SolutionName,
                                          Validation, TimeUS, SpeedGFlops,
+                                         TotalGranularity, TilesPerCu,
+                                         Tile0Granularity, Tile1Granularity, CuGranularity,
+                                         WaveGranularity,
                                          TempEdge, ClockRateSys, ClockRateSOC, ClockRateMem,
                                          FanSpeedRPMs, HardwareSampleCount, EnqueueTime},
                                         stream, dumpTensors));
