@@ -150,6 +150,69 @@ namespace Tensile
         return static_cast<uint32_t>(magicNum);
     }
 
+
+    std::vector<size_t> generatePackedIndicesA(ContractionSolution::Problem const &problem,
+                                               size_t packBatchDims)
+    {
+        std::vector<size_t> packedIndices;
+
+        // TODO -move packedIndices calc to problem decode.
+        for (auto idx=0; idx<problem.a().dimensions(); idx++)
+        {
+            bool isSum = problem.boundIndices().end() !=
+                          std::find_if(problem.boundIndices().begin(), problem.boundIndices().end(),
+                            [idx](const ContractionProblem::BoundIndex &bi)
+                            {return bi.a == idx;});
+
+            bool nonPackableBatch = false;
+            // TODO - base this check on if the batch is SetConstStrideA=0 - if so, don't pack
+            if (!(packBatchDims & 0x1))
+            {
+                nonPackableBatch = problem.batchIndices().end() !=
+                             std::find_if(problem.batchIndices().begin(), problem.batchIndices().end(),
+                                [idx](const ContractionProblem::BatchIndex &bi)
+                                {return bi.a == idx;});
+            }
+
+            if (!isSum && !nonPackableBatch)
+                packedIndices.push_back(idx);
+        }
+
+        return packedIndices;
+    }
+
+
+    std::vector<size_t> generatePackedIndicesB(ContractionSolution::Problem const &problem,
+                                               size_t packBatchDims)
+    {
+        std::vector<size_t> packedIndices;
+
+        // Pack in all non-summation indices, except don't need magic number for the last one
+        for (auto idx=0; idx<problem.b().dimensions(); idx++)
+        {
+            bool isSum = problem.boundIndices().end() !=
+                         std::find_if(problem.boundIndices().begin(), problem.boundIndices().end(),
+                            [idx](const ContractionProblem::BoundIndex &bi)
+                            {return bi.b == idx;});
+
+            bool nonPackableBatch = false;
+            // TODO - base this check on if the batch is SetConstStrideB=0 - if so, don't pack
+            if (!(packBatchDims & 0x2))
+            {
+                nonPackableBatch = problem.batchIndices().end() !=
+                             std::find_if(problem.batchIndices().begin(), problem.batchIndices().end(),
+                                [idx](const ContractionProblem::BatchIndex &bi)
+                                {return bi.b == idx;});
+            }
+
+            if (!isSum && !nonPackableBatch)
+                packedIndices.push_back(idx);
+        }
+
+        return packedIndices;
+    }
+
+
     template <typename TypedInputs>
     KernelInvocation ContractionSolution::generateSingleCall(ContractionSolution::Problem const& problem,
                                                              TypedInputs                  const& inputs,
@@ -313,29 +376,8 @@ namespace Tensile
 
         if (problem.freeIndicesA().size() > 1 || sizeMapping.packBatchDims & 0x1)
         {
-            std::vector<size_t> packedIndices;
+            std::vector<size_t> packedIndices = generatePackedIndicesA(problem, sizeMapping.packBatchDims);
 
-            // TODO -move packedIndices calc to problem decode.
-            for (auto idx=0; idx<problem.a().dimensions(); idx++)
-            {
-                bool isSum = problem.boundIndices().end() !=
-                              std::find_if(problem.boundIndices().begin(), problem.boundIndices().end(),
-                                [idx](const ContractionProblem::BoundIndex &bi)
-                                {return bi.a == idx;});
-
-                bool nonPackableBatch = false;
-                // TODO - base this check on if the batch is SetConstStrideA=0 - if so, don't pack
-                if (!(sizeMapping.packBatchDims & 0x1))
-                {
-                    nonPackableBatch = problem.batchIndices().end() !=
-                                 std::find_if(problem.batchIndices().begin(), problem.batchIndices().end(),
-                                    [idx](const ContractionProblem::BatchIndex &bi)
-                                    {return bi.a == idx;});
-                }
-
-                if (!isSum && !nonPackableBatch)
-                    packedIndices.push_back(idx);
-            }
             // Pack in all non-summation indices, except don't need magic number for the last one
             for (auto pi=packedIndices.begin(); pi!=packedIndices.end()-1; pi++)
             {
@@ -349,28 +391,8 @@ namespace Tensile
         }
         if (problem.freeIndicesB().size() > 1 || sizeMapping.packBatchDims & 0x2)
         {
-            std::vector<size_t> packedIndices;
-            // Pack in all non-summation indices, except don't need magic number for the last one
-            for (auto idx=0; idx<problem.b().dimensions(); idx++)
-            {
-                bool isSum = problem.boundIndices().end() !=
-                             std::find_if(problem.boundIndices().begin(), problem.boundIndices().end(),
-                                [idx](const ContractionProblem::BoundIndex &bi)
-                                {return bi.b == idx;});
+            std::vector<size_t> packedIndices = generatePackedIndicesB(problem, sizeMapping.packBatchDims);
 
-                bool nonPackableBatch = false;
-                // TODO - base this check on if the batch is SetConstStrideB=0 - if so, don't pack
-                if (!(sizeMapping.packBatchDims & 0x2))
-                {
-                    nonPackableBatch = problem.batchIndices().end() !=
-                                 std::find_if(problem.batchIndices().begin(), problem.batchIndices().end(),
-                                    [idx](const ContractionProblem::BatchIndex &bi)
-                                    {return bi.b == idx;});
-                }
-
-                if (!isSum && !nonPackableBatch)
-                    packedIndices.push_back(idx);
-            }
             // Pack in all non-summation indices, except don't need magic number for the last one
             for (auto pi=packedIndices.begin(); pi!=packedIndices.end()-1; pi++)
             {
@@ -603,14 +625,37 @@ namespace Tensile
         }
     }
 
-    ContractionSolution::ProjectedPerformance ContractionSolution::projectedPerformance(Problem const& problem, Hardware const& hardware) const
+    ContractionSolution::ProjectedPerformance ContractionSolution::projectedPerformance(
+        Problem const& problem, Hardware const& hardware) const
     {
         ProjectedPerformance pp;
 
-        double M = problem.freeSizeA(0);
-        double N = problem.freeSizeB(0);
-        double NumBatches = problem.batchSize(0);
-        double K = problem.boundSize(0);
+        double M=1.0, N=1.0;
+        if (problem.freeIndicesA().size() > 1 || sizeMapping.packBatchDims & 0x1)
+        {
+            std::vector<size_t> packedIndices = generatePackedIndicesA(problem, sizeMapping.packBatchDims);
+            for (auto pi=packedIndices.begin(); pi!=packedIndices.end(); pi++)
+                M *= problem.a().sizes()[*pi];
+        } else
+            M = problem.freeSizeA(0);
+
+        if (problem.freeIndicesB().size() > 1 || sizeMapping.packBatchDims & 0x2)
+        {
+            std::vector<size_t> packedIndices = generatePackedIndicesB(problem, sizeMapping.packBatchDims);
+            for (auto pi=packedIndices.begin(); pi!=packedIndices.end(); pi++)
+                N *= problem.b().sizes()[*pi];
+        }
+        else
+            N = problem.freeSizeB(0);
+
+
+        double NumBatches = 1;
+        if (sizeMapping.packBatchDims == 0)
+        {
+            for(size_t i = 0; i < problem.batchIndices().size(); i++)
+                NumBatches *= problem.batchSize(i);
+        }
+        double K = problem.boundSize(0); // TODO - fix for multiple summations
 
         auto it = ideals.begin();
 
