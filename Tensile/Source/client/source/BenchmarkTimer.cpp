@@ -92,6 +92,17 @@ namespace Tensile
             m_reporter->report(ResultKey::TotalGranularity, pp.totalGranularity);
 
             m_reporter->report(ResultKey::TilesPerCu, pp.tilesPerCu);
+
+            m_reporter->report(ResultKey::TilesPerCu, pp.tilesPerCu);
+
+            m_reporter->report(ResultKey::AluUs, pp.staticModel.aluUs);
+            m_reporter->report(ResultKey::MemReadUs, pp.staticModel.memReadUs);
+            m_reporter->report(ResultKey::MemWriteUs, pp.staticModel.memWriteUs);
+
+            m_reporter->report(ResultKey::MemReadBytes, pp.staticModel.memReadBytes);
+            m_reporter->report(ResultKey::MemWriteBytes, pp.staticModel.memWriteBytesD);
+
+            // TODO-perfcounter - add memory global reads and writes from performance counter
         }
 
         void BenchmarkTimer::postSolution()

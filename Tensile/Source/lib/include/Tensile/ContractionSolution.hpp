@@ -57,6 +57,21 @@ namespace Tensile
 
         bool isSourceKernel() const;
 
+        //! Estimates based on problem size, solution tile, and  machine hardware charz:
+        struct StaticPerformanceModel
+        {
+          size_t memReadBytesA=0.0; //! Estimated memory reads A
+          size_t memReadBytesB=0.0; //! Estimated memory reads B
+          size_t memReadBytesC=0.0; //! Estimated memory reads C
+          size_t memWriteBytesD=0.0; //! Estimated memory writes D
+          size_t memReadBytes=0.0;
+
+          //! Times in US
+          double memReadUs=0.0; //! Estimated memory read cycles
+          double memWriteUs=0.0; //! Estimated memory write cycles
+          double aluUs=0.0; //! Estimated alu cycles
+        };
+
         struct ProjectedPerformance
         {
           double numTiles0=0.0; //! number of tiles in 0 dimension
@@ -71,12 +86,19 @@ namespace Tensile
           double totalGranularity=0.0;
 
           double speedGFlops=0.0; //! final gflops projection
+
+          StaticPerformanceModel staticModel;
         };
+
+
+        StaticPerformanceModel staticPerformanceModel
+          (double M, double N, double K, double NumBatches,  double MT0, double MT1, 
+           double NumCUs, double totalGranularity, int globalSplitU) const;
 
         /**
          * Calculate the projected performance based on granularity loss.
          */
-        virtual ProjectedPerformance projectedPerformance(Problem const& problem, Hardware const& hardware) const;
+        ProjectedPerformance projectedPerformance(Problem const& problem, Hardware const& hardware) const;
 
         /**
          * Generate a set of kernel calls to solve a particular problem.

@@ -91,6 +91,13 @@ namespace Tensile
             const std::string TotalGranularity = "total-granularity";
             const std::string TilesPerCu = "tiles-per-cu";
 
+            const std::string MemReadBytes   = "mem-read-bytes";
+            const std::string MemWriteBytes  = "mem-write-bytes";
+            const std::string MemReadUs  = "mem-read-us";
+            const std::string MemWriteUs = "mem-write-us";
+            const std::string AluUs      = "alu-us";
+            const std::string Empty          = "empty";
+
             // Hardware monitoring
             const std::string TempEdge            = "temp-edge";
             const std::string ClockRateSys        = "clock-sys";

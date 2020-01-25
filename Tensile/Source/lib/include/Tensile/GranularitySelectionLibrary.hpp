@@ -93,7 +93,7 @@ namespace Tensile
 
             this->description();
 
-            double bestPerformance = 0.0;  
+            double bestPerformance = 0.0;
             auto iter = solutions.begin();
             if(iter == solutions.end())
                 return std::shared_ptr<MySolution>();
