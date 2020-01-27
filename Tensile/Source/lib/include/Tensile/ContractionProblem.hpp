@@ -101,6 +101,7 @@ namespace Tensile
             size_t a, b; //! positions in a or b tensor
             ZeroPad aZeroPad;
             ZeroPad bZeroPad;
+            bool aMirror, bMirror;
         };
         using BoundIndices = std::vector<BoundIndex>;
 
@@ -305,6 +306,12 @@ namespace Tensile
         void addAZeroPad(const ZeroPad &zp);
         void addBZeroPad(const ZeroPad &zp);
 
+        std::vector<size_t> const& aMrrorDims() const { return m_aMirrorDims; }
+        std::vector<size_t> const& bMirrorDims() const { return m_bMirrorDims; }
+
+        void addAMirrorDim(size_t dim);
+        void addBMirrorDim(size_t dim);
+
         double beta() const { return m_beta; }
 
         std::string const& aNames()   const { return m_aNames; }
@@ -349,6 +356,9 @@ namespace Tensile
 
         ZeroPads     m_aZeroPads;
         ZeroPads     m_bZeroPads;
+
+        std::vector<size_t> m_aMirrorDims;
+        std::vector<size_t> m_bMirrorDims;
 
         std::vector<size_t> m_freeSizesA;
         std::vector<size_t> m_freeSizesB;

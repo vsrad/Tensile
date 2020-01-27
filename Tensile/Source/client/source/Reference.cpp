@@ -171,16 +171,20 @@ namespace Tensile
 
                         typename Inputs::AType aVal(0);
                         typename Inputs::BType bVal(0);
-                        if (!aInZeroPad && !inZeroPad(problem, zpA, dCoord, i))
+
+                        size_t aI = problem.boundIndices()[0].aMirror ? (boundSize[0] - i - 1) : i;
+                        size_t aB = problem.boundIndices()[0].bMirror ? (boundSize[0] - i - 1) : i;
+
+                        if (!aInZeroPad && !inZeroPad(problem, zpA, dCoord, aI))
                             aVal = Transform<typename Inputs::AType>::Input(
-                                    inputs.a[aIndex + (i * aStride) - zpA.leadingPad], aConjugate);
-                        if (!bInZeroPad && !inZeroPad(problem, zpB, dCoord, i))
+                                    inputs.a[aIndex + (aI * aStride) - zpA.leadingPad], aConjugate);
+                        if (!bInZeroPad && !inZeroPad(problem, zpB, dCoord, aB))
                             bVal = Transform<typename Inputs::BType>::Input(
-                                    inputs.b[bIndex + (i * bStride) - zpB.leadingPad], bConjugate);
+                                    inputs.b[bIndex + (aB * bStride) - zpB.leadingPad], bConjugate);
 
                         value += static_cast<Accumulator>(aVal * bVal);
 
-                        bool innerZpa = inZeroPad(problem, zpA, dCoord, i);
+                        bool innerZpa = inZeroPad(problem, zpA, dCoord, aI);
                         if (0) {
                             std::cout << "dNum=" << dNum << " value=" << value << " aInZeroPad=" << aInZeroPad
                                     << " innerZpa=" << innerZpa << " aindex=" << aIndex << " +offset="
