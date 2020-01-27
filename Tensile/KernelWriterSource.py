@@ -990,6 +990,8 @@ class KernelWriterSource(KernelWriter):
         kStr += "  unsigned int zeroPad%s%s_Leading = %u;" % (tc, freeDimChar, leading) + self.endLine
         kStr += "  unsigned int zeroPad%s%s_Trailing = %u;" % (tc, freeDimChar, trailing) + self.endLine
 
+      # for md in kernel["ProblemType"]["MirrorDims%s"%tc]:             TODO
+
     self.magicSumChars = []
     if kernel["PackSummationDims"]:
       self.magicSumChars += [globalParameters["IndexChars"][c] for \
