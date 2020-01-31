@@ -8,19 +8,15 @@
 
 ### Remote machine
 * Linux
-* Perl (with `liblist-moreutils-perl`)
+* Perl
 * [.NET Core Runtime 3.1](https://dotnet.microsoft.com/download/dotnet-core/3.1)
 * [RadeonAsmDebugServer](https://github.com/vsrad/radeon-asm-tools#installation)
 * [libplugintercept](https://github.com/vsrad/debug-plug-hsa-intercept)
 * [Tensile](https://github.com/ROCmSoftwarePlatform/Tensile/wiki/Dependencies)
 
+A symbolic link to `libplugintercept.so` needs to be created in `/opt/rocm/lib`.
+
 ## Debugging a test case
-
-In the test case `.yaml`, add the following to `GlobalParameters`:
-
-```yaml
-DebugKernel: True
-```
 
 ### Remote machine
 
