@@ -1,0 +1,101 @@
+{
+  "DebuggerOptions": {
+    "Watches": [
+      {
+        "Name": "v[vgprSerial]",
+        "Type": "Uint",
+        "IsAVGPR": false
+      },
+      {
+        "Name": "s[sgprAddressA]",
+        "Type": "Hex",
+        "IsAVGPR": false
+      },
+      {
+        "Name": "s[sgprAddressA+1]",
+        "Type": "Hex",
+        "IsAVGPR": false
+      },
+      {
+        "Name": "v6",
+        "Type": "Float",
+        "IsAVGPR": false
+      }
+    ],
+    "Counter": 0,
+    "AppArgs": "",
+    "BreakArgs": ""
+  },
+  "VisualizerOptions": {
+    "ShowSystemVariable": false,
+    "MaskLanes": false,
+    "NDRange3D": false,
+    "LaneGrouping": 8,
+    "CheckMagicNumber": true,
+    "MagicNumber": "0x7777777",
+    "ShowAppArgs": false,
+    "ShowBrkArgs": false
+  },
+  "VisualizerColumnStyling": {
+    "VisibleColumns": "0-63",
+    "HighlightRegions": []
+  },
+  "ActiveProfile": "Default",
+  "Profiles": {
+    "Default": {
+      "General": {
+        "DeployDirectory": "/Tensile",
+        "RemoteMachine": "127.0.0.1",
+        "Port": 9339,
+        "AutosaveSource": 1,
+        "CopySources": true,
+        "AdditionalSources": ""
+      },
+      "Debugger": {
+        "Executable": "bash",
+        "Arguments": "$(RadDebugWorkDir)/debug.sh -l $(RadBreakLine) -f $(RadDeployDir)/$(RadActiveSourceFile) -w $(RadWatches) -t $(RadCounter) -o $(RadDebugDataOutputPath)",
+        "WorkingDirectory": "$(RadDeployDir)",
+        "OutputPath": "$(RadDebugWorkDir)/tmp/debug_result",
+        "BinaryOutput": true,
+        "OutputOffset": 0,
+        "ParseValidWatches": false,
+        "ValidWatchesFilePath": "",
+        "RunAsAdmin": false,
+        "TimeoutSecs": 0
+      },
+      "Preprocessor": {
+        "Executable": "",
+        "Arguments": "",
+        "WorkingDirectory": "",
+        "OutputPath": "",
+        "LocalOutputCopyPath": "",
+        "LineMarker": ""
+      },
+      "Disassembler": {
+        "Executable": "",
+        "Arguments": "",
+        "WorkingDirectory": "",
+        "OutputPath": "",
+        "LocalOutputCopyPath": "",
+        "LineMarker": ""
+      },
+      "Profiler": {
+        "Executable": "",
+        "Arguments": "",
+        "WorkingDirectory": "",
+        "OutputPath": "",
+        "ViewerExecutable": "",
+        "ViewerArguments": "",
+        "LocalOutputCopyPath": "",
+        "RunAsAdmin": false
+      },
+      "Build": {
+        "RunPreprocessor": false,
+        "RunDisassembler": false,
+        "Executable": "",
+        "Arguments": "",
+        "WorkingDirectory": ""
+      }
+    }
+  }
+}
