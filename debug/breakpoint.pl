@@ -1,4 +1,6 @@
-﻿my $usage = << "ENDOFUSAGE";
+﻿use strict;
+
+my $usage = << "ENDOFUSAGE";
 Usage: $0 [<options>] <gcnasm_source>
     gcnasm_source          the source s file
     options
@@ -155,7 +157,7 @@ while (<$input>) {
     print $fo s/= \d+/"= $vrs"/er;
   }
   elsif (/compute_pgm_rsrc1_sgprs/) {
-    my $srs = floor(($sgprs + $spgrs_used - 1) / 8);
+    my $srs = floor(($sgprs + $sgprs_used - 1) / 8);
     print $fo s/= \d+/"= $srs"/er;
   }
   elsif (/Num VGPR=/) {
