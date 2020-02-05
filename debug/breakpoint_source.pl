@@ -50,15 +50,15 @@ my $plug = << "PLUG";
 uint32_t system, system_tmp;
 
 asm volatile(
-    "v_mov_b32 \%0, 0x7777777 \\n\\ "         // system[0] = buffer marker
-    "s_getreg_b32 \%1, hwreg(HW_REG_HW_ID, 0, 32) \\n\\ "
-    "v_writelane_b32 \%0, \%1, 5 \\n\\ "      // system[5] = HW_REG_HW_ID
-    "s_getreg_b32 \%1, hwreg(HW_REG_GPR_ALLOC, 0, 32) \\n\\ "
-    "v_writelane_b32 \%0, \%1, 6 \\n\\ "      // system[6] = HW_REG_GPR_ALLOC
-    "s_getreg_b32 \%1, hwreg(HW_REG_LDS_ALLOC, 0, 32) \\n\\ "
-    "v_writelane_b32 \%0, \%1, 7 \\n\\ "      // system[7] = HW_REG_LDS_ALLOC
-    "v_writelane_b32 \%0, exec_lo, 8 \\n\\ "  // system[8] = exec_lo
-    "v_writelane_b32 \%0, exec_lo, 9 \\n\\ "  // system[9] = exec_hi
+    "v_mov_b32 \%0, 0x7777777 \\n "         // system[0] = buffer marker
+    "s_getreg_b32 \%1, hwreg(HW_REG_HW_ID, 0, 32) \\n "
+    "v_writelane_b32 \%0, \%1, 5 \\n "      // system[5] = HW_REG_HW_ID
+    "s_getreg_b32 \%1, hwreg(HW_REG_GPR_ALLOC, 0, 32) \\n "
+    "v_writelane_b32 \%0, \%1, 6 \\n "      // system[6] = HW_REG_GPR_ALLOC
+    "s_getreg_b32 \%1, hwreg(HW_REG_LDS_ALLOC, 0, 32) \\n "
+    "v_writelane_b32 \%0, \%1, 7 \\n "      // system[7] = HW_REG_LDS_ALLOC
+    "v_writelane_b32 \%0, exec_lo, 8 \\n "  // system[8] = exec_lo
+    "v_writelane_b32 \%0, exec_lo, 9"       // system[9] = exec_hi
     : "=v"(system) , "=s"(system_tmp) : );
 
 uint64_t offset = hc_get_workitem_id(0) +
