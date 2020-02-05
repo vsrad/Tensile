@@ -11,7 +11,7 @@ Usage: $0 [<options>] <hcc_source>
         -w <watches>    extra watches supplied colon separated in quotes;
                         watch type can be present
                         (like -w "a:b:c:i")
-        -t <value>      target value for the loop counter // TODO not implemented yet
+        -t <value>      target value for the loop counter
         -h              print usage information
 ENDOFUSAGE
 
@@ -23,7 +23,7 @@ my $line    = 0;
 my $output  = 0;
 my $bufsize;
 my $bufaddr;
-my $target;
+my $target  = 0;
 my $input;
 
 while (scalar @ARGV) {
@@ -46,41 +46,52 @@ die $usage unless $line && $input;
 my $n_user_vars = scalar @watches;
 my $n_vars = $n_user_vars + 1; # include system variable (hw regs)
 
+my $counter_def = "volatile unsigned int counter = 0;\n";
+
 my $plug = << "PLUG";
-uint32_t system, system_tmp;
+if (counter++ == $target) {
+    uint32_t system, system_tmp;
 
-asm volatile(
-    "v_mov_b32 \%0, 0x7777777 \\n "         // system[0] = buffer marker
-    "s_getreg_b32 \%1, hwreg(HW_REG_HW_ID, 0, 32) \\n "
-    "v_writelane_b32 \%0, \%1, 5 \\n "      // system[5] = HW_REG_HW_ID
-    "s_getreg_b32 \%1, hwreg(HW_REG_GPR_ALLOC, 0, 32) \\n "
-    "v_writelane_b32 \%0, \%1, 6 \\n "      // system[6] = HW_REG_GPR_ALLOC
-    "s_getreg_b32 \%1, hwreg(HW_REG_LDS_ALLOC, 0, 32) \\n "
-    "v_writelane_b32 \%0, \%1, 7 \\n "      // system[7] = HW_REG_LDS_ALLOC
-    "v_writelane_b32 \%0, exec_lo, 8 \\n "  // system[8] = exec_lo
-    "v_writelane_b32 \%0, exec_lo, 9"       // system[9] = exec_hi
-    : "=v"(system) , "=s"(system_tmp) : );
+    asm volatile(
+        "v_mov_b32 \%0, 0x7777777 \\n "         // system[0] = buffer marker
+        "s_getreg_b32 \%1, hwreg(HW_REG_HW_ID, 0, 32) \\n "
+        "v_writelane_b32 \%0, \%1, 5 \\n "      // system[5] = HW_REG_HW_ID
+        "s_getreg_b32 \%1, hwreg(HW_REG_GPR_ALLOC, 0, 32) \\n "
+        "v_writelane_b32 \%0, \%1, 6 \\n "      // system[6] = HW_REG_GPR_ALLOC
+        "s_getreg_b32 \%1, hwreg(HW_REG_LDS_ALLOC, 0, 32) \\n "
+        "v_writelane_b32 \%0, \%1, 7 \\n "      // system[7] = HW_REG_LDS_ALLOC
+        "v_writelane_b32 \%0, exec_lo, 8 \\n "  // system[8] = exec_lo
+        "v_writelane_b32 \%0, exec_lo, 9"       // system[9] = exec_hi
+        : "=v"(system) , "=s"(system_tmp) : );
 
-uint64_t offset = hc_get_workitem_id(0) +
-    hc_get_workitem_id(1) * hc_get_group_size(0) +
-    hc_get_workitem_id(2) * hc_get_group_size(1) * hc_get_group_size(2);
-offset += hc_get_group_id(0) * hc_get_group_size(0) +
-    hc_get_group_id(1) * hc_get_group_size(0) * hc_get_group_size(1) +
-    hc_get_group_id(2) * hc_get_group_size(0) * hc_get_group_size(1) * hc_get_group_size(2);
-offset *= $n_vars * sizeof(int32_t);
+    uint64_t offset = hc_get_workitem_id(0) +
+        hc_get_workitem_id(1) * hc_get_group_size(0) +
+        hc_get_workitem_id(2) * hc_get_group_size(1) * hc_get_group_size(2);
+    offset += hc_get_group_id(0) * hc_get_group_size(0) +
+        hc_get_group_id(1) * hc_get_group_size(0) * hc_get_group_size(1) +
+        hc_get_group_id(2) * hc_get_group_size(0) * hc_get_group_size(1) * hc_get_group_size(2);
+    offset *= $n_vars * sizeof(int32_t);
 
-uint32_t* debug_buffer = (uint32_t*)($bufaddr + offset);
-debug_buffer[0] = system;
+    uint32_t* debug_buffer = (uint32_t*)($bufaddr + offset);
+    debug_buffer[0] = system;
 PLUG
 
 while (my ($i, $watch) = each @watches) {
-    $plug .= "debug_buffer[$i + 1] = $watch;\n"
+    $plug .= "  debug_buffer[$i + 1] = $watch;\n"
 }
+
+$plug .= << "END";
+    asm volatile("s_endpgm");
+}
+END
 
 my $current_line = 0;
 while (<$input>) {
   $current_line++;
-  if ($current_line == $line) {
+  if (/Allocate Resources/) {
+    print $fo $counter_def;
+  }
+  elsif ($current_line == $line) {
     print $fo "$plug\n$_";
   }
   else {
