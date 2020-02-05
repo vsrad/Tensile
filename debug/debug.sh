@@ -33,7 +33,7 @@ dump-file = "$debug_buffer_path"
 log = "-"
 directory = "tmp/"
 [[code-object-swap]]
-when-call-count = 5
+when-call-count = 2
 load-file = "tmp/plugged.co"
 exec-before-load = """bash -o pipefail -c '\
     perl breakpoint_assembly.pl -ba \$ASM_DBG_BUF_ADDR -bs \$ASM_DBG_BUF_SIZE \

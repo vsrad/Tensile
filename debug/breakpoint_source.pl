@@ -64,9 +64,9 @@ asm volatile(
 uint64_t offset = hc_get_workitem_id(0) +
     hc_get_workitem_id(1) * hc_get_group_size(0) +
     hc_get_workitem_id(2) * hc_get_group_size(1) * hc_get_group_size(2);
-offset += hc_get_group_id(0) +
-    hc_get_group_id(1) * hc_get_num_groups(0) +
-    hc_get_group_id(2) * hc_get_num_groups(1) * hc_get_num_groups(2);
+offset += hc_get_group_id(0) * hc_get_group_size(0) +
+    hc_get_group_id(1) * hc_get_group_size(0) * hc_get_group_size(1) +
+    hc_get_group_id(2) * hc_get_group_size(0) * hc_get_group_size(1) * hc_get_group_size(2);
 offset *= $n_vars * sizeof(int32_t);
 
 uint32_t* debug_buffer = (uint32_t*)($bufaddr + offset);
