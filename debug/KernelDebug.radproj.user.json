@@ -28,7 +28,7 @@
   },
   "VisualizerOptions": {
     "ShowSystemVariable": false,
-    "MaskLanes": false,
+    "MaskLanes": true,
     "NDRange3D": false,
     "LaneGrouping": 8,
     "CheckMagicNumber": true,
@@ -53,7 +53,7 @@
       },
       "Debugger": {
         "Executable": "bash",
-        "Arguments": "$(RadDebugWorkDir)/debug.sh -l $(RadBreakLine) -f $(RadDeployDir)/$(RadActiveSourceFile) -w $(RadWatches) -t $(RadCounter) -o $(RadDebugDataOutputPath)",
+        "Arguments": "$(RadDebugWorkDir)/debug.sh -l $(RadBreakLine) -f $(RadDeployDir)/$(RadActiveSourceFile) -w \"$(RadWatches)\" -t $(RadCounter) -o $(RadDebugDataOutputPath)",
         "WorkingDirectory": "$(RadDeployDir)",
         "OutputPath": "$(RadDebugWorkDir)/tmp/debug_result",
         "BinaryOutput": true,
