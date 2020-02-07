@@ -61,7 +61,7 @@ if (counter++ == $target) {
         "s_getreg_b32 \%1, hwreg(HW_REG_LDS_ALLOC, 0, 32) \\n "
         "v_writelane_b32 \%0, \%1, 7 \\n "      // system[7] = HW_REG_LDS_ALLOC
         "v_writelane_b32 \%0, exec_lo, 8 \\n "  // system[8] = exec_lo
-        "v_writelane_b32 \%0, exec_lo, 9"       // system[9] = exec_hi
+        "v_writelane_b32 \%0, exec_hi, 9"       // system[9] = exec_hi
         : "=v"(system) , "=s"(system_tmp) : );
 
     uint64_t offset = hc_get_workitem_id(0) +
@@ -70,14 +70,15 @@ if (counter++ == $target) {
     offset += hc_get_group_id(0) * hc_get_group_size(0) +
         hc_get_group_id(1) * hc_get_group_size(0) * hc_get_group_size(1) +
         hc_get_group_id(2) * hc_get_group_size(0) * hc_get_group_size(1) * hc_get_group_size(2);
-    offset *= $n_vars * sizeof(int32_t);
+    offset *= $n_vars * sizeof(uint32_t);
 
-    uint32_t* debug_buffer = (uint32_t*)($bufaddr + offset);
+    uint32_t* debug_buffer = reinterpret_cast<uint32_t*>($bufaddr + offset);
     debug_buffer[0] = system;
 PLUG
 
 while (my ($i, $watch) = each @watches) {
-    $plug .= "  debug_buffer[$i + 1] = $watch;\n"
+    $plug .= "  auto debug_watch_$i = $watch;\n";
+    $plug .= "  debug_buffer[$i + 1] = *reinterpret_cast<uint32_t*>(&debug_watch_$i);\n";
 }
 
 $plug .= << "END";
@@ -87,7 +88,6 @@ END
 
 my $current_line = 0;
 while (<$input>) {
-  $current_line++;
   if (/Allocate Resources/) {
     print $fo $counter_def;
   }
@@ -97,6 +97,7 @@ while (<$input>) {
   else {
     print $fo $_;
   }
+  $current_line++;
 }
 
 die "Break line out of range" if $current_line < $line;
