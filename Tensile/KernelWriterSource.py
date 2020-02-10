@@ -1152,8 +1152,9 @@ class KernelWriterSource(KernelWriter):
   ##############################################################################
   def graTileAssignment(self, kernel, tP):
     kStr = ""
-    kStr += "  unsigned int globalReadOffset%s%s = (serial%s" \
-        % (tP["tensorChar"], tP["tileChar"], ("%" if tP["grcg"] == tP["tlu"] else "/") )
+    insideGrp = "(NUM_THREADS-serial-1)" if tP["mirror"] and tP["grcg"] == tP["tlu"] else "serial"
+    kStr += "  unsigned int globalReadOffset%s%s = (%s%s" \
+        % (tP["tensorChar"], tP["tileChar"], insideGrp, ("%" if tP["grcg"] == tP["tlu"] else "/") )
     if tP["grcg"]:
       kStr += (tP["lvc"] if tP["grcv"] else tP["lsc"])
     else:
@@ -1162,7 +1163,10 @@ class KernelWriterSource(KernelWriter):
     if tP["grcv"] == tP["tlu"]:
       kStr += "*GLOBAL_LOAD_VECTOR_WIDTH_%s" % tP["tensorChar"]
     kStr += " + ("
-    kStr += "wg%s" % (tP["tileChar"])
+    if tP["mirror"]:
+      kStr += "nwg%s - wg%s - 1" % (tP["tileChar"], tP["tileChar"])
+    else:
+      kStr += "wg%s" % (tP["tileChar"])
     kStr += ")*MT%s;%s" % (tP["tileChar"], self.endLine)
     return kStr
 
@@ -1172,8 +1176,9 @@ class KernelWriterSource(KernelWriter):
   ##############################################################################
   def graUnrollAssignment(self, kernel, tP):
     kStr = ""
-    kStr += "  unsigned int globalReadOffset%s%s = (serial%s" \
-        % (tP["tensorChar"], self.unrollChar, ("/" if tP["grcg"] == tP["tlu"] else "%") )
+    bwOffset = "sizeK - 1 - " if tP["mirror"] and tP["grcg"] == tP["tlu"] else ""
+    kStr += "  unsigned int globalReadOffset%s%s = %s (serial%s" \
+        % (tP["tensorChar"], self.unrollChar, bwOffset, ("/" if tP["grcg"] == tP["tlu"] else "%") )
     if tP["grcg"]:
       kStr += (tP["lvc"] if tP["grcv"] else tP["lsc"])
     else:
@@ -1490,6 +1495,8 @@ class KernelWriterSource(KernelWriter):
           kStr += declStr
           if not kernel["PackSummationDims"]:
             kStr += " - stride%s%s*(size%s)" % (tc, tmpChar, tmpChar)
+    if tP["mirror"]:
+      kStr += "*-1"
     kStr += ";" + self.endLine
     return kStr
 
@@ -2219,13 +2226,18 @@ class KernelWriterSource(KernelWriter):
             guarded = 0
             if guardK:
               guarded = 1
-              kStr += "( globalReadOffset%s%s_%u_%u + %u >= (size%s %% LOCAL_DEPTHU%s)%s )" \
-                  % (tP["tensorChar"], self.unrollChar, \
-                  (perp if tP["tlu"] else para), \
-                  (sPerp if tP["tlu"] else 0), (0 if tP["tlu"] else sPara), self.unrollChar, \
-                  (" + LOCAL_DEPTHU*gsuSumIdx" if kernel["GlobalSplitU"]>1 \
-                  else ""), (" || !numIter%s"%self.unrollChar) \
-                  if kernel["GlobalSplitU"] > 1 else "")
+              if tP["mirror"]:
+                kStr += "(globalRead%s_%u_%u_%u_%u + %u < %s)" \
+                    % (tP["tensorChar"], para, 0 if tP["rc"] else sPara, perp, sPerp, sPara if tP["rc"] else 0, tP["tensorChar"])
+              else:
+                kStr += "( globalReadOffset%s%s_%u_%u + %u >= (size%s %% LOCAL_DEPTHU%s)%s )" \
+                    % (tP["tensorChar"], self.unrollChar, \
+                    (perp if tP["tlu"] else para), \
+                    (sPerp if tP["tlu"] else 0), (0 if tP["tlu"] else sPara),
+                    self.unrollChar, \
+                    (" + LOCAL_DEPTHU*gsuSumIdx" if kernel["GlobalSplitU"]>1 \
+                    else ""), (" || !numIter%s"%self.unrollChar) \
+                    if kernel["GlobalSplitU"] > 1 else "")
 
             # guard around pad
             for zp in kernel["ProblemType"]["ZeroPad%s"%tc]:
@@ -2741,9 +2753,17 @@ class KernelWriterSource(KernelWriter):
 
     # Add Index0 and Index1:
     index0 = kernel["ProblemType"]["Index0"]
+
+    if kernel["ProblemType"]["MirrorDimsA"] != kernel["ProblemType"]["MirrorDimsB"]:
+      c0I = "(nwg%s - wg%s - 1)" % (self.indexChars[index0], self.indexChars[index0])
+      c0Serial = "(NUM_THREADS - serial - 1)"
+    else:
+      c0I = "(wg%s)" % self.indexChars[index0]
+      c0Serial = "serial"
+
     kStr += "  unsigned int flattenedGlobalC0 = "
-    kStr += "(wg%s)*MT%s + (serial %% SG%s)*VECTOR_WIDTH;%s" \
-            % (self.indexChars[index0], self.tileChar0, self.tileChar0, self.endLine)
+    kStr += "%s*MT%s + (%s %% SG%s)*VECTOR_WIDTH;%s" \
+            % (c0I, self.tileChar0, c0Serial, self.tileChar0, self.endLine)
 
     index1 = kernel["ProblemType"]["Index1"]
     kStr += "  unsigned int flattenedGlobalC1 = "
@@ -2778,6 +2798,7 @@ class KernelWriterSource(KernelWriter):
         if packGranularity==2:
           addTensorDimCheck0 = 1
           base0 = " %u*SG%s*VECTOR_WIDTH" % (a,self.tileChar0)
+
         for s1 in range(0, kernel["VectorWidth"]):
           if packGranularity==2:
             addTensorDimCheck1 = 1
@@ -2865,6 +2886,7 @@ class KernelWriterSource(KernelWriter):
             #    % (a, s1, self.tileChar0, b, self.tileChar0, \
             #    ((".%s"%self.vectorComponents[s0]) if kernel["VectorWidth"]>1\
             #    else "") )
+            s0 = kernel["VectorWidth"] - 1 - s0 if kernel["ProblemType"]["MirrorDimsA"] == [2] else s0
             kStr += ", rC[%u*VECTOR_WIDTH+%u + (%u*VECTOR_WIDTH+%u)*TT%s]" \
                 % (a, s0, b, s1, self.tileChar0 )
             if kernel["ProblemType"]["UseBeta"]:
