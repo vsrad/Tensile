@@ -143,7 +143,6 @@ my $vgprs;
 
 my $current_line = 0;
 while (<$input>) {
-  $current_line++;
   if (/workitem_vgpr_count/) {
     print $fo s/(\d+)/$1 + $vgprs_used/er;
     $vgprs = $1;
@@ -189,6 +188,7 @@ while (<$input>) {
   else {
     print $fo $_;
   }
+  $current_line++;
 }
 
 die "Break line out of range" if $current_line < $line;
