@@ -152,6 +152,11 @@ namespace Tensile
                         aCoord[boundIndices[i].a] = bound[i] - zpA.leadingPad;
                         bCoord[boundIndices[i].b] = bound[i] - zpB.leadingPad;
 
+                        if (problem.boundIndices()[i].aMirror)
+                            aCoord[boundIndices[i].a] = boundSize[i] - aCoord[boundIndices[i].a] - 1;
+                        if (problem.boundIndices()[i].bMirror)
+                            bCoord[boundIndices[i].b] = boundSize[i] - bCoord[boundIndices[i].b] - 1;
+
                         if (zpA.valid() && inZeroPad(problem, zpA, dCoord, bound.at(problem.toBoundsPos(zpA.boundIndex))))
                             aInZeroPad = true;
                         if (zpB.valid() && inZeroPad(problem, zpB, dCoord, bound.at(problem.toBoundsPos(zpB.boundIndex))))
