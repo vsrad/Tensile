@@ -45,11 +45,12 @@ die $usage unless $line && $input;
 
 my $n_user_vars = scalar @watches;
 my $n_vars = $n_user_vars + 1; # include system variable (hw regs)
+$target = 1 unless $target;
 
 my $counter_def = "volatile unsigned int counter = 0;\n";
 
 my $plug = << "PLUG";
-if (counter++ == $target) {
+if (++counter == $target) {
     uint32_t system, system_tmp;
 
     asm volatile(
