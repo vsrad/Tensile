@@ -21,46 +21,51 @@ gcnarch=`/opt/rocm/bin/rocminfo | grep -om1 gfx9..`
 rm -rf tmp/
 mkdir tmp
 
-export ASM_DBG_CONFIG=tmp/config.toml
+export INTERCEPT_CONFIG=tmp/config.toml
 if [[ ${source_file##*.} = "s" ]]; then
     cat <<EOF > tmp/config.toml
-[agent]
-log = "-"
-[debug-buffer]
+[logs]
+agent-log = "-"
+co-log = "-"
+[[buffer]]
 size = 1048576
-dump-file = "$debug_buffer_path"
-[code-object-dump]
-log = "-"
-directory = "tmp/"
-[[code-object-swap]]
-when-call-count = 2
-load-file = "tmp/plugged.co"
-exec-before-load = """bash -o pipefail -c '\
+dump-path = "$debug_buffer_path"
+addr-env-name = "ASM_DBG_BUF_ADDR"
+size-env-name = "ASM_DBG_BUF_SIZE"
+[init-command]
+exec = """bash -o pipefail -c '\
     perl breakpoint_assembly.pl -ba \$ASM_DBG_BUF_ADDR -bs \$ASM_DBG_BUF_SIZE \
     -l $line -w "$watches" -t ${counter:=0} -p $perl_args $source_file \
     | /opt/rocm/bin/hcc -x assembler -target amdgcn--amdhsa -mcpu=$gcnarch \
-    -mno-code-object-v3 -o tmp/plugged.co -'"""
+    -mno-code-object-v3 -o tmp/plugged.co -
+'"""
+required-return-code = 0
+[[code-object-replace]]
+condition = { co-load-id = 2 }
+co-path = "tmp/plugged.co"
 EOF
 elif [[ ${source_file##*.} = "cpp" ]]; then
     cat <<EOF > tmp/config.toml
-[agent]
-log = "-"
-[debug-buffer]
+[logs]
+agent-log = "-"
+co-log = "-"
+[[buffer]]
 size = 1048576
-dump-file = "$debug_buffer_path"
-[code-object-dump]
-log = "-"
-directory = "tmp/"
-[[code-object-swap]]
-when-call-count = 1
-load-file = "tmp/Kernels-plugged.so-000-$gcnarch.hsaco"
-exec-before-load = """bash -o pipefail -c '\
+dump-path = "$debug_buffer_path"
+addr-env-name = "ASM_DBG_BUF_ADDR"
+size-env-name = "ASM_DBG_BUF_SIZE"
+[init-command]
+exec = """bash -o pipefail -c '\
     perl breakpoint_source.pl -ba \$ASM_DBG_BUF_ADDR -bs \$ASM_DBG_BUF_SIZE \
     -l $line -w "$watches" -t ${counter:=0} -p $perl_args -o tmp/Kernels-plugged.cpp $source_file \
     ; /opt/rocm/bin/hcc `/opt/rocm/hcc/bin/hcc-config --cxxflags --ldflags --shared` \
     -I\`echo 1_BenchmarkProblems/*/00_Final/source*\` tmp/Kernels-plugged.cpp -o tmp/Kernels-plugged.so \
     ; /opt/rocm/bin/extractkernel -i tmp/Kernels-plugged.so
 '"""
+required-return-code = 0
+[[code-object-replace]]
+condition = { co-load-id = 2 }
+co-path = "tmp/Kernels-plugged.so-000-$gcnarch.hsaco"
 EOF
 else
     >&2 echo "Unsupported source extension: ${source_file##*.}. Select a .s file for assembly debugging or .cpp file for source debugging and rerun the script."
